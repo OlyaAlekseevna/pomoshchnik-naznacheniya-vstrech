@@ -1,19 +1,35 @@
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 
+from aiogram.exceptions import TelegramAPIError
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.bot.dispatcher import create_bot, create_dispatcher
+from app.bot.handlers import configure_session_factory
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.db.session import create_session_factory
 from app.services.db import close_engine, create_engine, ping_database
 from app.services.redis_client import close_redis, create_redis_client, ping_redis
 
 logger = logging.getLogger(__name__)
+
+
+def _log_polling_task_result(task: asyncio.Task[None]) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        logger.exception(
+            "Aiogram polling terminated with error.",
+            extra={"event": "aiogram_polling_error"},
+        )
 
 
 async def _run_external_checks(
@@ -66,22 +82,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logger.info("Application startup initiated.", extra={"event": "app_startup_started"})
 
         engine: AsyncEngine = create_engine(app_settings.sqlalchemy_url)
+        session_factory = create_session_factory(engine)
         redis_client: Redis = create_redis_client(app_settings.redis_url)
         dispatcher = create_dispatcher()
+        configure_session_factory(session_factory)
         bot_token = (
             app_settings.telegram_bot_token.get_secret_value()
             if app_settings.telegram_bot_token is not None
             else None
         )
         bot = create_bot(bot_token)
+        polling_task: asyncio.Task[None] | None = None
         if bot is not None:
             logger.info("Aiogram bot initialized.", extra={"event": "aiogram_initialized"})
+            if app_settings.telegram_polling_enabled:
+                logger.info(
+                    "Starting aiogram polling.",
+                    extra={"event": "aiogram_polling_starting"},
+                )
+                try:
+                    await bot.delete_webhook(drop_pending_updates=True)
+                    logger.info(
+                        "Telegram webhook deleted before polling.",
+                        extra={"event": "telegram_webhook_deleted_for_polling"},
+                    )
+                except TelegramAPIError:
+                    logger.exception(
+                        "Failed to delete Telegram webhook before polling.",
+                        extra={"event": "telegram_webhook_delete_error"},
+                    )
+                polling_task = asyncio.create_task(
+                    dispatcher.start_polling(
+                        bot,
+                        allowed_updates=dispatcher.resolve_used_update_types(),
+                    )
+                )
+                polling_task.add_done_callback(_log_polling_task_result)
+            else:
+                logger.info(
+                    "Aiogram polling is disabled by config.",
+                    extra={"event": "aiogram_polling_disabled"},
+                )
 
         application.state.settings = app_settings
         application.state.engine = engine
         application.state.redis_client = redis_client
         application.state.dispatcher = dispatcher
         application.state.bot = bot
+        application.state.polling_task = polling_task
 
         await _run_external_checks(app_settings, engine, redis_client)
 
@@ -90,6 +138,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             logger.info("Application shutdown initiated.", extra={"event": "app_shutdown_started"})
+            polling_task = getattr(application.state, "polling_task", None)
+            if polling_task is not None:
+                polling_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await polling_task
+                logger.info(
+                    "Aiogram polling stopped.",
+                    extra={"event": "aiogram_polling_stopped"},
+                )
             if bot is not None:
                 await bot.session.close()
             await close_redis(redis_client)

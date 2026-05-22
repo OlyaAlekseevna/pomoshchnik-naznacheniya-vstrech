@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     app_skip_external_checks: bool = False
 
     telegram_bot_token: SecretStr | None = None
+    telegram_invite_token: str | None = None
+    telegram_polling_enabled: bool = True
 
     postgres_host: str = "postgres"
     postgres_port: int = 5432
@@ -59,6 +61,8 @@ class Settings(BaseSettings):
             "redis_port": self.redis_port,
             "redis_db": self.redis_db,
             "telegram_token_provided": bool(self.telegram_bot_token),
+            "telegram_invite_token_configured": bool(self.telegram_invite_token),
+            "telegram_polling_enabled": self.telegram_polling_enabled,
         }
 
 
