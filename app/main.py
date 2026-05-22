@@ -8,8 +8,10 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.bot.dispatcher import create_bot, create_dispatcher
+from app.bot.handlers import configure_session_factory
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.db.session import create_session_factory
 from app.services.db import close_engine, create_engine, ping_database
 from app.services.redis_client import close_redis, create_redis_client, ping_redis
 
@@ -66,8 +68,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         logger.info("Application startup initiated.", extra={"event": "app_startup_started"})
 
         engine: AsyncEngine = create_engine(app_settings.sqlalchemy_url)
+        session_factory = create_session_factory(engine)
         redis_client: Redis = create_redis_client(app_settings.redis_url)
         dispatcher = create_dispatcher()
+        configure_session_factory(session_factory)
         bot_token = (
             app_settings.telegram_bot_token.get_secret_value()
             if app_settings.telegram_bot_token is not None
