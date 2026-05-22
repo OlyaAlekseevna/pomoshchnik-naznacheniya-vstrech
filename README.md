@@ -9,6 +9,7 @@
 - Endpoint `GET /health`.
 - Базовое структурированное логирование.
 - Базовые проверки: `ruff` и `pytest`.
+- Alembic-миграции и модель данных Этапа 2.
 
 ## Быстрый локальный запуск через Docker Compose
 
@@ -58,4 +59,19 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```powershell
 ruff check .
 pytest
+```
+
+## Миграции базы данных
+
+Применить миграции:
+
+```powershell
+$env:DATABASE_URL = "postgresql+asyncpg://calendar_user:calendar_password@localhost:5432/calendar_bot"
+alembic upgrade head
+```
+
+Откатить последнюю миграцию:
+
+```powershell
+alembic downgrade -1
 ```
