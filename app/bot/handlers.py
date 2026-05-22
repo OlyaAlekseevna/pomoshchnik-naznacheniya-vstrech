@@ -143,7 +143,7 @@ async def _show_dates_step(message: Message, state: FSMContext) -> None:
         await state.set_state(BookingFlowState.choosing_duration)
         await _safe_answer(
             message,
-            "Сначала выберите длительность консультации.",
+            "Choose consultation duration first.",
             reply_markup=duration_keyboard(),
         )
         return
@@ -161,7 +161,7 @@ async def _show_dates_step(message: Message, state: FSMContext) -> None:
     await state.set_state(BookingFlowState.choosing_date)
     await _safe_answer(
         message,
-        f"{week_title(week.week_start, week.week_end)}\nВыберите дату:",
+        f"{week_title(week.week_start, week.week_end)}\nChoose a date:",
         reply_markup=dates_keyboard(week=week, week_offset=week_offset),
     )
 
@@ -182,30 +182,22 @@ async def _show_slots_step(message: Message, state: FSMContext, meeting_date: da
     await state.set_state(BookingFlowState.choosing_slot)
     await _safe_answer(
         message,
-        (
-            "Выберите свободный слот:"
-            if slots
-            else "На эту дату нет свободных слотов. Выберите другую дату."
-        ),
+        "Choose a free slot:" if slots else "No free slots for this date. Choose another date.",
         reply_markup=slots_keyboard(slots) if slots else back_keyboard(),
     )
 
 
 def _summary_text(data: dict[str, object]) -> str:
-    consultation_kind = str(data.get("consultation_kind", CONSULTATION_KIND))
-    consultation_kind_label = (
-        "Консультация" if consultation_kind == CONSULTATION_KIND else consultation_kind
-    )
     return (
-        "Проверьте заявку перед отправкой:\n"
-        f"Тип: {consultation_kind_label}\n"
-        f"Длительность: {data.get('duration_minutes')} мин\n"
-        f"Дата: {data.get('selected_date')}\n"
-        f"Слот: {data.get('slot_label')}\n"
-        f"ФИО: {data.get('full_name')}\n"
-        f"Телефон: {data.get('phone')}\n"
+        "Please confirm your request:\n"
+        f"Type: {data.get('consultation_kind', CONSULTATION_KIND)}\n"
+        f"Duration: {data.get('duration_minutes')} min\n"
+        f"Date: {data.get('selected_date')}\n"
+        f"Slot: {data.get('slot_label')}\n"
+        f"Name: {data.get('full_name')}\n"
+        f"Phone: {data.get('phone')}\n"
         f"Email: {data.get('email')}\n"
-        f"Цель: {data.get('meeting_goal')}"
+        f"Goal: {data.get('meeting_goal')}"
     )
 
 
@@ -252,7 +244,7 @@ async def on_start(message: Message, state: FSMContext) -> None:
     await state.clear()
     await _safe_answer(
         message,
-        "Добро пожаловать! Используйте меню ниже, чтобы создать заявку на консультацию.",
+        "Welcome! Use the menu below to create a booking request.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -274,7 +266,7 @@ async def start_booking_flow(message: Message, state: FSMContext) -> None:
     await state.set_state(BookingFlowState.choosing_consultation)
     await _safe_answer(
         message,
-        "Выберите тип консультации:",
+        "Choose consultation type:",
         reply_markup=consultation_keyboard(),
     )
 
@@ -287,12 +279,12 @@ async def show_user_history(message: Message, state: FSMContext) -> None:
     async with session_factory() as session:
         user = await get_user_by_telegram_id(session, message.from_user.id)
         if user is None:
-            await _safe_answer(message, "Заявок пока нет.")
+            await _safe_answer(message, "No requests yet.")
             return
         requests = await get_user_requests(session, user.id)
     await state.clear()
     if not requests:
-        await _safe_answer(message, "Заявок пока нет.", reply_markup=main_menu_keyboard())
+        await _safe_answer(message, "No requests yet.", reply_markup=main_menu_keyboard())
         return
 
     await _safe_answer(
@@ -303,16 +295,16 @@ async def show_user_history(message: Message, state: FSMContext) -> None:
     for item in requests:
         actions = request_actions_keyboard(item.id, editable=is_request_editable(item.status))
         if actions is not None:
-            await _safe_answer(message, f"Действия для заявки #{item.id}", reply_markup=actions)
+            await _safe_answer(message, f"Actions for request #{item.id}", reply_markup=actions)
 
 
 @router.callback_query(F.data == "consultation:select")
 async def on_consultation_selected(query: CallbackQuery, state: FSMContext) -> None:
-    await _safe_reply_callback(query, "Тип консультации выбран.")
+    await _safe_reply_callback(query, "Consultation selected.")
     await state.set_state(BookingFlowState.choosing_duration)
     await _safe_answer(
         query.message,
-        "Выберите длительность:",
+        "Choose duration:",
         reply_markup=duration_keyboard(),
     )
 
@@ -345,7 +337,7 @@ async def on_duration_selected(query: CallbackQuery, state: FSMContext) -> None:
             ),
         )
 
-    await _safe_reply_callback(query, "Длительность выбрана.")
+    await _safe_reply_callback(query, "Duration selected.")
     await _show_dates_step(query.message, state)
 
 
@@ -362,7 +354,7 @@ async def on_week_switched(query: CallbackQuery, state: FSMContext) -> None:
             "user_selected_week",
         ),
     )
-    await _safe_reply_callback(query, "Неделя обновлена.")
+    await _safe_reply_callback(query, "Week updated.")
     await _show_dates_step(query.message, state)
 
 
@@ -394,7 +386,7 @@ async def on_date_selected(query: CallbackQuery, state: FSMContext) -> None:
             ),
         )
 
-    await _safe_reply_callback(query, "Дата выбрана.")
+    await _safe_reply_callback(query, "Date selected.")
     await _show_slots_step(query.message, state, selected_date)
 
 
@@ -416,11 +408,11 @@ async def on_slot_selected(query: CallbackQuery, state: FSMContext) -> None:
             "user_selected_slot",
         ),
     )
-    await _safe_reply_callback(query, "Слот выбран.")
+    await _safe_reply_callback(query, "Slot selected.")
     await state.set_state(BookingFlowState.entering_full_name)
     await _safe_answer(
         query.message,
-        "Введите ваше имя и фамилию:",
+        "Enter your full name:",
         reply_markup=back_keyboard(),
     )
 
@@ -436,28 +428,28 @@ async def back_from_name(message: Message, state: FSMContext) -> None:
 async def on_full_name(message: Message, state: FSMContext) -> None:
     await state.update_data(full_name=(message.text or "").strip())
     await state.set_state(BookingFlowState.entering_phone)
-    await _safe_answer(message, "Введите номер телефона:", reply_markup=back_keyboard())
+    await _safe_answer(message, "Enter your phone number:", reply_markup=back_keyboard())
 
 
 @router.message(BookingFlowState.entering_phone, F.text.casefold() == BACK_TEXT.casefold())
 async def back_from_phone(message: Message, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.set_state(BookingFlowState.entering_full_name)
-    await _safe_answer(message, "Введите ваше имя и фамилию:", reply_markup=back_keyboard())
+    await _safe_answer(message, "Enter your full name:", reply_markup=back_keyboard())
 
 
 @router.message(BookingFlowState.entering_phone)
 async def on_phone(message: Message, state: FSMContext) -> None:
     await state.update_data(phone=(message.text or "").strip())
     await state.set_state(BookingFlowState.entering_email)
-    await _safe_answer(message, "Введите email:", reply_markup=back_keyboard())
+    await _safe_answer(message, "Enter your email:", reply_markup=back_keyboard())
 
 
 @router.message(BookingFlowState.entering_email, F.text.casefold() == BACK_TEXT.casefold())
 async def back_from_email(message: Message, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.set_state(BookingFlowState.entering_phone)
-    await _safe_answer(message, "Введите номер телефона:", reply_markup=back_keyboard())
+    await _safe_answer(message, "Enter your phone number:", reply_markup=back_keyboard())
 
 
 @router.message(BookingFlowState.entering_email)
@@ -468,18 +460,18 @@ async def on_email(message: Message, state: FSMContext) -> None:
             "User entered invalid email.",
             extra=_with_event({"input": candidate}, "user_invalid_email"),
         )
-        await _safe_answer(message, "Некорректный формат email. Введите корректный email.")
+        await _safe_answer(message, "Invalid email format. Please enter a valid email.")
         return
     await state.update_data(email=candidate)
     await state.set_state(BookingFlowState.entering_goal)
-    await _safe_answer(message, "Опишите цель встречи:", reply_markup=back_keyboard())
+    await _safe_answer(message, "Describe the meeting goal:", reply_markup=back_keyboard())
 
 
 @router.message(BookingFlowState.entering_goal, F.text.casefold() == BACK_TEXT.casefold())
 async def back_from_goal(message: Message, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.set_state(BookingFlowState.entering_email)
-    await _safe_answer(message, "Введите email:", reply_markup=back_keyboard())
+    await _safe_answer(message, "Enter your email:", reply_markup=back_keyboard())
 
 
 @router.message(BookingFlowState.entering_goal)
@@ -488,7 +480,7 @@ async def on_goal(message: Message, state: FSMContext) -> None:
     await state.set_state(BookingFlowState.confirming_consent)
     await _safe_answer(
         message,
-        "Подтвердите согласие на обработку персональных данных.",
+        "Please confirm consent for personal data processing.",
         reply_markup=consent_keyboard(),
     )
 
@@ -502,7 +494,7 @@ async def on_consent_confirmed(query: CallbackQuery, state: FSMContext) -> None:
         "User confirmed consent.",
         extra=_with_event({"telegram_user_id": query.from_user.id}, "user_consent_confirmed"),
     )
-    await _safe_reply_callback(query, "Согласие сохранено.")
+    await _safe_reply_callback(query, "Consent saved.")
     data = await state.get_data()
     await state.set_state(BookingFlowState.confirming_summary)
     await _safe_answer(query.message, _summary_text(data), reply_markup=summary_keyboard())
@@ -514,8 +506,8 @@ async def on_submit_request(query: CallbackQuery, state: FSMContext) -> None:
         return
     data = await state.get_data()
     if not can_submit_with_consent(bool(data.get("consent_given"))):
-        await _safe_reply_callback(query, "Нужно подтвердить согласие.")
-        await _safe_answer(query.message, "Перед отправкой заявки нужно подтвердить согласие.")
+        await _safe_reply_callback(query, "Consent is required.")
+        await _safe_answer(query.message, "You must confirm consent before submission.")
         return
 
     selected_slot = SlotChoice(
@@ -544,10 +536,8 @@ async def on_submit_request(query: CallbackQuery, state: FSMContext) -> None:
         try:
             ensure_slot_still_available(selected_slot, available_slots)
         except BusinessRuleViolation:
-            await _safe_reply_callback(query, "Слот уже недоступен.")
-            await _safe_answer(
-                query.message, "Этот слот больше недоступен. Выберите другой."
-            )
+            await _safe_reply_callback(query, "Selected slot is not available now.")
+            await _safe_answer(query.message, "Slot is no longer available. Choose another one.")
             await state.set_state(BookingFlowState.choosing_slot)
             await _show_slots_step(query.message, state, selected_slot.start_at.date())
             return
@@ -572,11 +562,11 @@ async def on_submit_request(query: CallbackQuery, state: FSMContext) -> None:
             "user_request_submitted",
         ),
     )
-    await _safe_reply_callback(query, "Заявка отправлена.")
+    await _safe_reply_callback(query, "Request sent.")
     await state.clear()
     await _safe_answer(
         query.message,
-        f"Заявка #{request.id} создана и отправлена на согласование.",
+        f"Request #{request.id} created and sent for approval.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -588,10 +578,10 @@ async def on_edit_request(query: CallbackQuery, state: FSMContext) -> None:
     request_id = int(query.data.split(":", maxsplit=1)[1])
     await state.set_state(BookingFlowState.editing_goal)
     await state.update_data(editing_request_id=request_id)
-    await _safe_reply_callback(query, "Отправьте новый текст цели.")
+    await _safe_reply_callback(query, "Send a new goal text.")
     await _safe_answer(
         query.message,
-        f"Введите новую цель для заявки #{request_id}:",
+        f"Enter new goal for request #{request_id}:",
         reply_markup=back_keyboard(),
     )
 
@@ -605,7 +595,7 @@ async def on_cancel_request(query: CallbackQuery, state: FSMContext) -> None:
     async with session_factory() as session:
         user = await get_user_by_telegram_id(session, query.from_user.id)
         if user is None:
-            await _safe_answer(query.message, "Пользователь не зарегистрирован.")
+            await _safe_answer(query.message, "User is not registered.")
             return
         try:
             canceled_request = await cancel_request_for_user(
@@ -615,18 +605,16 @@ async def on_cancel_request(query: CallbackQuery, state: FSMContext) -> None:
                 telegram_user_id=query.from_user.id,
             )
         except (LookupError, BusinessRuleViolation):
-            await _safe_reply_callback(query, "Заявку нельзя отменить.")
-            await _safe_answer(
-                query.message, "Эту заявку нельзя отменить в текущем статусе."
-            )
+            await _safe_reply_callback(query, "Request cannot be canceled.")
+            await _safe_answer(query.message, "This request cannot be canceled in current status.")
             return
         await session.commit()
 
     await state.clear()
-    await _safe_reply_callback(query, "Заявка отменена.")
+    await _safe_reply_callback(query, "Request canceled.")
     await _safe_answer(
         query.message,
-        f"Заявка #{canceled_request.id} отменена.",
+        f"Request #{canceled_request.id} canceled.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -635,7 +623,7 @@ async def on_cancel_request(query: CallbackQuery, state: FSMContext) -> None:
 async def back_from_edit_goal(message: Message, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.clear()
-    await _safe_answer(message, "Назад в меню.", reply_markup=main_menu_keyboard())
+    await _safe_answer(message, "Back to menu.", reply_markup=main_menu_keyboard())
 
 
 @router.message(BookingFlowState.editing_goal)
@@ -648,7 +636,7 @@ async def on_new_goal_for_request(message: Message, state: FSMContext) -> None:
     async with session_factory() as session:
         user = await get_user_by_telegram_id(session, message.from_user.id)
         if user is None:
-            await _safe_answer(message, "Пользователь не зарегистрирован.")
+            await _safe_answer(message, "User is not registered.")
             return
         try:
             updated_request = await update_request_goal_for_user(
@@ -659,13 +647,13 @@ async def on_new_goal_for_request(message: Message, state: FSMContext) -> None:
                 new_goal=(message.text or "").strip(),
             )
         except (LookupError, BusinessRuleViolation):
-            await _safe_answer(message, "Эту заявку нельзя изменить в текущем статусе.")
+            await _safe_answer(message, "This request cannot be edited in current status.")
             return
         await session.commit()
     await state.clear()
     await _safe_answer(
         message,
-        f"Заявка #{updated_request.id} обновлена.",
+        f"Request #{updated_request.id} updated.",
         reply_markup=main_menu_keyboard(),
     )
 
@@ -674,18 +662,18 @@ async def on_new_goal_for_request(message: Message, state: FSMContext) -> None:
 async def nav_to_menu(query: CallbackQuery, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.clear()
-    await _safe_reply_callback(query, "Назад в меню.")
-    await _safe_answer(query.message, "Главное меню.", reply_markup=main_menu_keyboard())
+    await _safe_reply_callback(query, "Back to menu.")
+    await _safe_answer(query.message, "Main menu.", reply_markup=main_menu_keyboard())
 
 
 @router.callback_query(F.data == "nav:to_consultation")
 async def nav_to_consultation(query: CallbackQuery, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.set_state(BookingFlowState.choosing_consultation)
-    await _safe_reply_callback(query, "Назад.")
+    await _safe_reply_callback(query, "Back.")
     await _safe_answer(
         query.message,
-        "Выберите тип консультации:",
+        "Choose consultation type:",
         reply_markup=consultation_keyboard(),
     )
 
@@ -694,14 +682,14 @@ async def nav_to_consultation(query: CallbackQuery, state: FSMContext) -> None:
 async def nav_to_duration(query: CallbackQuery, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.set_state(BookingFlowState.choosing_duration)
-    await _safe_reply_callback(query, "Назад.")
-    await _safe_answer(query.message, "Выберите длительность:", reply_markup=duration_keyboard())
+    await _safe_reply_callback(query, "Back.")
+    await _safe_answer(query.message, "Choose duration:", reply_markup=duration_keyboard())
 
 
 @router.callback_query(F.data == "nav:to_date")
 async def nav_to_date(query: CallbackQuery, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
-    await _safe_reply_callback(query, "Назад.")
+    await _safe_reply_callback(query, "Back.")
     await _show_dates_step(query.message, state)
 
 
@@ -709,17 +697,17 @@ async def nav_to_date(query: CallbackQuery, state: FSMContext) -> None:
 async def nav_to_goal(query: CallbackQuery, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.set_state(BookingFlowState.entering_goal)
-    await _safe_reply_callback(query, "Назад.")
-    await _safe_answer(query.message, "Опишите цель встречи:", reply_markup=back_keyboard())
+    await _safe_reply_callback(query, "Back.")
+    await _safe_answer(query.message, "Describe the meeting goal:", reply_markup=back_keyboard())
 
 
 @router.callback_query(F.data == "nav:to_consent")
 async def nav_to_consent(query: CallbackQuery, state: FSMContext) -> None:
     logger.info("User pressed back.", extra=_with_event({}, "user_pressed_back"))
     await state.set_state(BookingFlowState.confirming_consent)
-    await _safe_reply_callback(query, "Назад.")
+    await _safe_reply_callback(query, "Back.")
     await _safe_answer(
         query.message,
-        "Подтвердите согласие на обработку персональных данных.",
+        "Please confirm consent for personal data processing.",
         reply_markup=consent_keyboard(),
     )
