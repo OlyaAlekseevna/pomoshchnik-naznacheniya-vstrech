@@ -249,6 +249,13 @@ async def on_start(message: Message, state: FSMContext) -> None:
         )
         await session.commit()
 
+    logger.info(
+        "User opened bot with valid start command.",
+        extra=_with_event(
+            {"telegram_user_id": message.from_user.id},
+            "user_start_command_received",
+        ),
+    )
     await state.clear()
     await _safe_answer(
         message,

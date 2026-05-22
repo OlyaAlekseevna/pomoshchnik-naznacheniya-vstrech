@@ -101,10 +101,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     extra={"event": "aiogram_polling_starting"},
                 )
                 try:
-                    await bot.delete_webhook(drop_pending_updates=True)
+                    await bot.delete_webhook(
+                        drop_pending_updates=app_settings.telegram_drop_pending_updates_on_start
+                    )
                     logger.info(
                         "Telegram webhook deleted before polling.",
-                        extra={"event": "telegram_webhook_deleted_for_polling"},
+                        extra={
+                            "event": "telegram_webhook_deleted_for_polling",
+                            "drop_pending_updates": (
+                                app_settings.telegram_drop_pending_updates_on_start
+                            ),
+                        },
                     )
                 except TelegramAPIError:
                     logger.exception(
