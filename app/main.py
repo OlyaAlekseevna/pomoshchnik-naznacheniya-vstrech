@@ -1,6 +1,5 @@
-import asyncio
 import logging
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
@@ -79,32 +78,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else None
         )
         bot = create_bot(bot_token)
-        polling_task: asyncio.Task[None] | None = None
         if bot is not None:
             logger.info("Aiogram bot initialized.", extra={"event": "aiogram_initialized"})
-            if app_settings.telegram_polling_enabled:
-                logger.info(
-                    "Starting aiogram polling.",
-                    extra={"event": "aiogram_polling_starting"},
-                )
-                polling_task = asyncio.create_task(
-                    dispatcher.start_polling(
-                        bot,
-                        allowed_updates=dispatcher.resolve_used_update_types(),
-                    )
-                )
-            else:
-                logger.info(
-                    "Aiogram polling is disabled by config.",
-                    extra={"event": "aiogram_polling_disabled"},
-                )
 
         application.state.settings = app_settings
         application.state.engine = engine
         application.state.redis_client = redis_client
         application.state.dispatcher = dispatcher
         application.state.bot = bot
-        application.state.polling_task = polling_task
 
         await _run_external_checks(app_settings, engine, redis_client)
 
@@ -113,15 +94,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             logger.info("Application shutdown initiated.", extra={"event": "app_shutdown_started"})
-            polling_task = getattr(application.state, "polling_task", None)
-            if polling_task is not None:
-                polling_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await polling_task
-                logger.info(
-                    "Aiogram polling stopped.",
-                    extra={"event": "aiogram_polling_stopped"},
-                )
             if bot is not None:
                 await bot.session.close()
             await close_redis(redis_client)
