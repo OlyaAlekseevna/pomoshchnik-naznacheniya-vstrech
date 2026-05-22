@@ -1,7 +1,6 @@
 import logging
 from datetime import UTC, date, datetime, time
 
-from sqlalchemy import and_, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +8,6 @@ from app.db.enums import RequestChangedByRole, RequestStatus, ReservationStatus
 from app.db.models import (
     ConsultationRequest,
     RequestStatusHistory,
-    ScheduleSettings,
     SlotReservation,
     TechnicalError,
     User,
@@ -227,120 +225,3 @@ async def create_technical_error(
         )
         raise
     return technical_error
-
-
-async def get_user_by_telegram_id(
-    session: AsyncSession,
-    telegram_user_id: int,
-) -> User | None:
-    query = select(User).where(User.telegram_user_id == telegram_user_id)
-    return (await session.execute(query)).scalars().first()
-
-
-async def get_or_create_user_by_telegram_id(
-    session: AsyncSession,
-    telegram_user_id: int,
-    invited_access_granted: bool,
-    first_name: str | None = None,
-    last_name: str | None = None,
-    username: str | None = None,
-) -> User:
-    existing_user = await get_user_by_telegram_id(session, telegram_user_id)
-    if existing_user is not None:
-        if invited_access_granted and not existing_user.invited_access_granted:
-            existing_user.invited_access_granted = True
-            await session.flush()
-        return existing_user
-    return await create_user(
-        session=session,
-        telegram_user_id=telegram_user_id,
-        invited_access_granted=invited_access_granted,
-        first_name=first_name,
-        last_name=last_name,
-        username=username,
-    )
-
-
-async def get_schedule_settings(session: AsyncSession) -> ScheduleSettings:
-    settings = (await session.execute(select(ScheduleSettings))).scalars().first()
-    if settings is None:
-        raise RuntimeError("Schedule settings are not initialized.")
-    return settings
-
-
-async def list_active_reservations_by_date(
-    session: AsyncSession,
-    meeting_date: date,
-) -> list[SlotReservation]:
-    start_of_day = datetime.combine(meeting_date, time.min, tzinfo=UTC)
-    end_of_day = datetime.combine(meeting_date, time.max, tzinfo=UTC)
-    query = (
-        select(SlotReservation)
-        .where(
-            and_(
-                SlotReservation.status == ReservationStatus.ACTIVE,
-                SlotReservation.start_at >= start_of_day,
-                SlotReservation.start_at <= end_of_day,
-            )
-        )
-        .order_by(SlotReservation.start_at.asc())
-    )
-    return (await session.execute(query)).scalars().all()
-
-
-async def count_consultations_for_date(
-    session: AsyncSession,
-    meeting_date: date,
-) -> int:
-    query = select(func.count(ConsultationRequest.id)).where(
-        and_(
-            ConsultationRequest.meeting_date == meeting_date,
-            ConsultationRequest.status.in_(
-                [
-                    RequestStatus.PENDING_APPROVAL,
-                    RequestStatus.UPDATED_BY_USER,
-                    RequestStatus.APPROVED,
-                ]
-            ),
-        )
-    )
-    return int((await session.execute(query)).scalar_one())
-
-
-async def list_requests_by_user_id(
-    session: AsyncSession,
-    user_id: int,
-) -> list[ConsultationRequest]:
-    query = (
-        select(ConsultationRequest)
-        .where(ConsultationRequest.user_id == user_id)
-        .order_by(ConsultationRequest.created_at.desc())
-    )
-    return (await session.execute(query)).scalars().all()
-
-
-async def get_request_by_id_and_user_id(
-    session: AsyncSession,
-    request_id: int,
-    user_id: int,
-) -> ConsultationRequest | None:
-    query = select(ConsultationRequest).where(
-        and_(
-            ConsultationRequest.id == request_id,
-            ConsultationRequest.user_id == user_id,
-        )
-    )
-    return (await session.execute(query)).scalars().first()
-
-
-async def get_active_reservation_by_request_id(
-    session: AsyncSession,
-    request_id: int,
-) -> SlotReservation | None:
-    query = select(SlotReservation).where(
-        and_(
-            SlotReservation.request_id == request_id,
-            SlotReservation.status == ReservationStatus.ACTIVE,
-        )
-    )
-    return (await session.execute(query)).scalars().first()
