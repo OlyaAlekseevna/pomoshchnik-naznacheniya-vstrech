@@ -59,30 +59,28 @@ def is_valid_email(value: str) -> bool:
 
 def request_status_label(status: RequestStatus) -> str:
     labels = {
-        RequestStatus.DRAFT: "draft",
-        RequestStatus.PENDING_APPROVAL: "pending approval",
-        RequestStatus.UPDATED_BY_USER: "updated by user",
-        RequestStatus.CANCELED_BY_USER: "canceled by user",
-        RequestStatus.APPROVED: "approved",
-        RequestStatus.REJECTED: "rejected",
-        RequestStatus.SLOT_UNAVAILABLE: "slot unavailable",
-        RequestStatus.RESERVATION_EXPIRED: "reservation expired",
-        RequestStatus.EVENT_CREATION_ERROR: "event creation error",
+        RequestStatus.DRAFT: "черновик",
+        RequestStatus.PENDING_APPROVAL: "ожидает согласования",
+        RequestStatus.UPDATED_BY_USER: "обновлена пользователем",
+        RequestStatus.CANCELED_BY_USER: "отменена пользователем",
+        RequestStatus.APPROVED: "согласована",
+        RequestStatus.REJECTED: "отклонена",
+        RequestStatus.SLOT_UNAVAILABLE: "слот недоступен",
+        RequestStatus.RESERVATION_EXPIRED: "резерв истек",
+        RequestStatus.EVENT_CREATION_ERROR: "ошибка создания события",
     }
     return labels.get(status, status.value)
 
 
 def build_user_requests_text(items: list[ConsultationRequest]) -> str:
     if not items:
-        return "No requests yet."
-    lines = ["Your requests:"]
+        return "Заявок пока нет."
+    lines = ["Ваши заявки:"]
     for item in items:
         lines.append(
-            
-                f"#{item.id} | {item.meeting_date:%Y-%m-%d} "
+            f"#{item.id} | {item.meeting_date:%d.%m.%Y} "
                 f"{item.start_time.strftime('%H:%M')}-{item.end_time.strftime('%H:%M')} | "
                 f"{request_status_label(item.status)}"
-            
         )
     return "\n".join(lines)
 

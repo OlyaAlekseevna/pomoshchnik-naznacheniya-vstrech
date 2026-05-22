@@ -219,7 +219,7 @@ async def test_user_history_text_and_helpers() -> None:
         text = build_user_requests_text(requests)
 
         assert requests
-        assert text.startswith("Your requests:")
+        assert text.startswith("Ваши заявки:")
         assert "#" in text
 
     await engine.dispose()

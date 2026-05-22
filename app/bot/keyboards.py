@@ -13,11 +13,21 @@ from app.bot.user_flow_service import SlotChoice
 from app.domain.scheduling import WeekWindow
 
 DURATIONS_MINUTES = (15, 30, 45, 90)
-BACK_TEXT = "Back"
-BOOK_TEXT = "Book consultation"
-MY_REQUESTS_TEXT = "My requests"
-CONSENT_TEXT = "I agree"
-SUBMIT_TEXT = "Submit request"
+BACK_TEXT = "Назад"
+BOOK_TEXT = "Записаться на консультацию"
+MY_REQUESTS_TEXT = "Мои заявки"
+CONSENT_TEXT = "Согласен(на)"
+SUBMIT_TEXT = "Отправить заявку"
+
+_WEEKDAY_LABELS = {
+    0: "Пн",
+    1: "Вт",
+    2: "Ср",
+    3: "Чт",
+    4: "Пт",
+    5: "Сб",
+    6: "Вс",
+}
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -40,7 +50,7 @@ def back_keyboard() -> ReplyKeyboardMarkup:
 def consultation_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Consultation", callback_data="consultation:select")],
+            [InlineKeyboardButton(text="Консультация", callback_data="consultation:select")],
             [InlineKeyboardButton(text=BACK_TEXT, callback_data="nav:to_menu")],
         ]
     )
@@ -50,7 +60,7 @@ def duration_keyboard() -> InlineKeyboardMarkup:
     rows = [
         [
             InlineKeyboardButton(
-                text=f"{duration} min",
+                text=f"{duration} мин",
                 callback_data=f"duration:{duration}",
             )
         ]
@@ -66,7 +76,7 @@ def dates_keyboard(week: WeekWindow, week_offset: int) -> InlineKeyboardMarkup:
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=item.strftime("%a %d.%m"),
+                    text=f"{_WEEKDAY_LABELS[item.weekday()]} {item:%d.%m}",
                     callback_data=f"date:{item.isoformat()}",
                 )
             ]
@@ -75,11 +85,11 @@ def dates_keyboard(week: WeekWindow, week_offset: int) -> InlineKeyboardMarkup:
     nav_row: list[InlineKeyboardButton] = []
     if week.can_go_prev:
         nav_row.append(
-            InlineKeyboardButton(text="Prev week", callback_data=f"week:{week_offset - 1}")
+            InlineKeyboardButton(text="← Пред. неделя", callback_data=f"week:{week_offset - 1}")
         )
     if week.can_go_next:
         nav_row.append(
-            InlineKeyboardButton(text="Next week", callback_data=f"week:{week_offset + 1}")
+            InlineKeyboardButton(text="След. неделя →", callback_data=f"week:{week_offset + 1}")
         )
     if nav_row:
         rows.append(nav_row)
@@ -120,12 +130,12 @@ def request_actions_keyboard(request_id: int, editable: bool) -> InlineKeyboardM
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Edit goal", callback_data=f"req_edit:{request_id}"),
-                InlineKeyboardButton(text="Cancel", callback_data=f"req_cancel:{request_id}"),
+                InlineKeyboardButton(text="Изменить цель", callback_data=f"req_edit:{request_id}"),
+                InlineKeyboardButton(text="Отменить", callback_data=f"req_cancel:{request_id}"),
             ]
         ]
     )
 
 
 def week_title(week_start: date, week_end: date) -> str:
-    return f"Week: {week_start:%d.%m} - {week_end:%d.%m}"
+    return f"Неделя: {week_start:%d.%m} - {week_end:%d.%m}"
