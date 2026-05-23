@@ -338,7 +338,13 @@ async def finish_google_connect(message: Message, state: FSMContext) -> None:
                 service=_google_service_from_settings(),
             )
         except (GoogleIntegrationError, ValueError) as error:
-            await _safe_answer(message, f"Не удалось подключить Google OAuth: {error}")
+            await _safe_answer(
+                message,
+                (
+                    f"Не удалось подключить Google OAuth: {error}\n"
+                    "Отправьте в этот чат либо чистый code, либо полную ссылку redirect."
+                ),
+            )
             return
         await session.commit()
     await state.clear()

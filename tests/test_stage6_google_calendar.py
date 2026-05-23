@@ -8,6 +8,7 @@ from app.bot.admin_service import (
     SlotUnavailableOnApprovalError,
     approve_request_with_calendar,
     connect_google_oauth_with_code,
+    extract_google_oauth_code,
 )
 from app.bot.user_flow_service import calculate_slots_for_date, slot_rules_from_settings
 from app.core.config import Settings
@@ -110,6 +111,36 @@ async def test_connect_google_oauth_with_code_persists_credentials() -> None:
         assert stored[0].refresh_token == "refresh-token"
         assert "успешно" in text
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_connect_google_oauth_accepts_full_redirect_url() -> None:
+    engine, session_factory = await _create_session_factory()
+    async with session_factory() as session:
+        await _seed_settings(session)
+        text = await connect_google_oauth_with_code(
+            session=session,
+            admin_telegram_id=9001,
+            authorization_code=(
+                "http://127.0.0.1:8080/callback?"
+                "state=admin_google_connect&code=valid-code&scope=openid"
+            ),
+            service=FakeGoogleServiceForOAuth(),
+        )
+        await session.commit()
+        stored = (await session.execute(select(GoogleOAuthCredential))).scalars().all()
+        assert len(stored) == 1
+        assert stored[0].refresh_token == "refresh-token"
+        assert "успешно" in text
+    await engine.dispose()
+
+
+def test_extract_google_oauth_code_from_redirect_url() -> None:
+    raw = (
+        "http://127.0.0.1:8080/callback?"
+        "state=admin_google_connect&iss=https://accounts.google.com&code=valid-code&scope=openid"
+    )
+    assert extract_google_oauth_code(raw) == "valid-code"
 
 
 @pytest.mark.asyncio

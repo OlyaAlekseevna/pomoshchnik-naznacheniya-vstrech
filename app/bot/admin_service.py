@@ -4,6 +4,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta, timezone
+from urllib.parse import parse_qs, unquote, urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -390,13 +391,45 @@ def build_google_oauth_instructions(settings: Settings, service: GoogleCalendarS
     )
 
 
+def extract_google_oauth_code(raw_value: str) -> str:
+    value = raw_value.strip()
+    if not value:
+        raise ValueError("Код авторизации пустой.")
+
+    parsed = urlparse(value)
+    if parsed.scheme and parsed.netloc:
+        query_values = parse_qs(parsed.query)
+        code_from_query = query_values.get("code", [None])[0]
+        if code_from_query:
+            return unquote(code_from_query.strip())
+        fragment_values = parse_qs(parsed.fragment)
+        code_from_fragment = fragment_values.get("code", [None])[0]
+        if code_from_fragment:
+            return unquote(code_from_fragment.strip())
+        raise ValueError("В ссылке не найден параметр code.")
+
+    query_like = parse_qs(value.lstrip("?"))
+    code_from_query_like = query_like.get("code", [None])[0]
+    if code_from_query_like:
+        return unquote(code_from_query_like.strip())
+
+    if "code=" in value:
+        tail = value.split("code=", maxsplit=1)[1]
+        code_from_tail = tail.split("&", maxsplit=1)[0].strip()
+        if code_from_tail:
+            return unquote(code_from_tail)
+
+    return value
+
+
 async def connect_google_oauth_with_code(
     session: AsyncSession,
     admin_telegram_id: int,
     authorization_code: str,
     service: GoogleCalendarService,
 ) -> str:
-    tokens = await service.exchange_authorization_code(authorization_code.strip())
+    extracted_code = extract_google_oauth_code(authorization_code)
+    tokens = await service.exchange_authorization_code(extracted_code)
     existing = await get_google_oauth_credentials(session)
     refresh_token = (
         tokens.refresh_token
