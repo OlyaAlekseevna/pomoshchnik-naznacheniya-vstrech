@@ -210,6 +210,12 @@ async def test_settings_and_forbidden_period_updates() -> None:
         await _seed_settings(session)
         admin_id = 9001
 
+        summary_with_ru_weekdays = await apply_setting_update(
+            session,
+            admin_id,
+            "working_days",
+            "понедельник, вторник, сред, четверг, пятница",
+        )
         await apply_setting_update(session, admin_id, "buffer", "45")
         await apply_setting_update(session, admin_id, "horizon", "35")
         await apply_setting_update(session, admin_id, "working_hours", "09:30-17:15")
@@ -230,6 +236,14 @@ async def test_settings_and_forbidden_period_updates() -> None:
         await session.commit()
 
         settings = await get_schedule_settings(session)
+        assert settings.working_days == [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+        ]
+        assert "понедельник" in summary_with_ru_weekdays
         assert settings.buffer_minutes == 45
         assert settings.booking_horizon_days == 35
         assert settings.workday_start == time(9, 30)

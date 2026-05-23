@@ -61,6 +61,56 @@ WEEKDAY_VALUES = {
     "sunday",
 }
 
+WEEKDAY_LABELS_RU = {
+    "monday": "понедельник",
+    "tuesday": "вторник",
+    "wednesday": "среда",
+    "thursday": "четверг",
+    "friday": "пятница",
+    "saturday": "суббота",
+    "sunday": "воскресенье",
+}
+
+WEEKDAY_ALIASES = {
+    "monday": "monday",
+    "mon": "monday",
+    "понедельник": "monday",
+    "пон": "monday",
+    "пн": "monday",
+    "tuesday": "tuesday",
+    "tue": "tuesday",
+    "tues": "tuesday",
+    "вторник": "tuesday",
+    "втор": "tuesday",
+    "вт": "tuesday",
+    "wednesday": "wednesday",
+    "wed": "wednesday",
+    "среда": "wednesday",
+    "сред": "wednesday",
+    "ср": "wednesday",
+    "thursday": "thursday",
+    "thu": "thursday",
+    "thur": "thursday",
+    "четверг": "thursday",
+    "четв": "thursday",
+    "чт": "thursday",
+    "friday": "friday",
+    "fri": "friday",
+    "пятница": "friday",
+    "пят": "friday",
+    "пт": "friday",
+    "saturday": "saturday",
+    "sat": "saturday",
+    "суббота": "saturday",
+    "суб": "saturday",
+    "сб": "saturday",
+    "sunday": "sunday",
+    "sun": "sunday",
+    "воскресенье": "sunday",
+    "воск": "sunday",
+    "вс": "sunday",
+}
+
 _HOURS_REGEX = re.compile(r"^(?P<start>\d{2}:\d{2})-(?P<end>\d{2}:\d{2})$")
 _ALT_SLOT_REGEX = re.compile(
     r"^(?P<day>\d{4}-\d{2}-\d{2}) (?P<start>\d{2}:\d{2})-(?P<end>\d{2}:\d{2})$"
@@ -208,6 +258,40 @@ def _build_google_event_description(request: ConsultationRequest, user: User | N
     )
 
 
+def _weekday_label_ru(day_value: str) -> str:
+    return WEEKDAY_LABELS_RU.get(day_value, day_value)
+
+
+def _normalize_weekday_token(raw_value: str) -> str | None:
+    normalized = raw_value.strip().lower().replace("ё", "е").replace(".", "")
+    if not normalized:
+        return None
+    if normalized in WEEKDAY_VALUES:
+        return normalized
+    return WEEKDAY_ALIASES.get(normalized)
+
+
+def _parse_working_days(raw_value: str) -> list[str]:
+    raw_items = [item.strip() for item in raw_value.split(",") if item.strip()]
+    parsed: list[str] = []
+    unknown: list[str] = []
+    for item in raw_items:
+        normalized = _normalize_weekday_token(item)
+        if normalized is None:
+            unknown.append(item)
+            continue
+        if normalized not in parsed:
+            parsed.append(normalized)
+    if not parsed or unknown:
+        unknown_suffix = f" Не распознано: {', '.join(unknown)}." if unknown else ""
+        raise ValueError(
+            "Используйте дни недели через запятую на русском или английском. "
+            "Пример: понедельник,вторник,среда или monday,tuesday,wednesday."
+            f"{unknown_suffix}"
+        )
+    return parsed
+
+
 def build_request_card(request: ConsultationRequest, user: User | None) -> str:
     user_blocked = user.is_blocked if user is not None else False
     user_line = (
@@ -263,10 +347,11 @@ def build_history_text(request_id: int, history_items: list[RequestStatusHistory
 
 
 def build_settings_summary(settings: ScheduleSettings) -> str:
+    weekdays_ru = ",".join(_weekday_label_ru(item) for item in settings.working_days)
     return (
         "Текущие настройки расписания:\n"
         f"- часовой пояс: {settings.timezone}\n"
-        f"- рабочие дни: {','.join(settings.working_days)}\n"
+        f"- рабочие дни: {weekdays_ru}\n"
         f"- рабочее время: {settings.workday_start.strftime('%H:%M')}"
         f"-{settings.workday_end.strftime('%H:%M')}\n"
         f"- длительности: {','.join(str(item) for item in settings.available_durations_minutes)}\n"
@@ -723,9 +808,7 @@ async def apply_setting_update(
     value = raw_value.strip()
 
     if setting_key == "working_days":
-        days = [item.strip().lower() for item in value.split(",") if item.strip()]
-        if not days or any(item not in WEEKDAY_VALUES for item in days):
-            raise ValueError("Используйте список дней: monday,tuesday,...,sunday")
+        days = _parse_working_days(value)
         await update_schedule_settings(session, working_days=days)
     elif setting_key == "working_hours":
         match = _HOURS_REGEX.fullmatch(value)

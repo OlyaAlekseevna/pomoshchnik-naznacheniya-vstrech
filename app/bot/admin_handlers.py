@@ -145,7 +145,10 @@ def _extract_request_id(raw_callback_data: str) -> int:
 
 def _setting_prompt(setting_key: str) -> str:
     prompts = {
-        "working_days": "Введите дни недели через запятую: monday,tuesday,...",
+        "working_days": (
+            "Введите дни недели через запятую. "
+            "Можно по-русски: понедельник,вторник,среда или по-английски: monday,tuesday,..."
+        ),
         "working_hours": "Введите рабочие часы в формате HH:MM-HH:MM",
         "durations": "Введите длительности в минутах через запятую. Пример: 15,30,45,90",
         "min_notice": "Введите минимальное время до встречи в минутах. Пример: 120",
