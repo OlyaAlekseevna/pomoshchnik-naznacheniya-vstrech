@@ -139,3 +139,98 @@ def request_actions_keyboard(request_id: int, editable: bool) -> InlineKeyboardM
 
 def week_title(week_start: date, week_end: date) -> str:
     return f"Неделя: {week_start:%d.%m} - {week_end:%d.%m}"
+
+
+def admin_main_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Pending requests", callback_data="admin:req:list")],
+            [InlineKeyboardButton(text="Schedule settings", callback_data="admin:settings")],
+        ]
+    )
+
+
+def admin_request_actions_keyboard(request_id: int, is_user_blocked: bool) -> InlineKeyboardMarkup:
+    block_action = "Unblock user" if is_user_blocked else "Block user"
+    block_callback = (
+        f"admin:req:unblock_user:{request_id}"
+        if is_user_blocked
+        else f"admin:req:block_user:{request_id}"
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Approve",
+                    callback_data=f"admin:req:approve:{request_id}",
+                ),
+                InlineKeyboardButton(
+                    text="Reject",
+                    callback_data=f"admin:req:reject:{request_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Offer alternative slot",
+                    callback_data=f"admin:req:alt_slot:{request_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Status history",
+                    callback_data=f"admin:req:history:{request_id}",
+                )
+            ],
+            [InlineKeyboardButton(text=block_action, callback_data=block_callback)],
+            [
+                InlineKeyboardButton(
+                    text="Create meeting manually",
+                    callback_data=f"admin:req:manual_create:{request_id}",
+                )
+            ],
+            [InlineKeyboardButton(text="Back to admin menu", callback_data="admin:menu")],
+        ]
+    )
+
+
+def admin_settings_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Set working days",
+                    callback_data="admin:set:working_days",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Set working hours",
+                    callback_data="admin:set:working_hours",
+                )
+            ],
+            [InlineKeyboardButton(text="Set durations", callback_data="admin:set:durations")],
+            [InlineKeyboardButton(text="Set min notice", callback_data="admin:set:min_notice")],
+            [InlineKeyboardButton(text="Set buffer", callback_data="admin:set:buffer")],
+            [InlineKeyboardButton(text="Set daily limit", callback_data="admin:set:daily_limit")],
+            [InlineKeyboardButton(text="Set horizon", callback_data="admin:set:horizon")],
+            [
+                InlineKeyboardButton(
+                    text="Add forbidden date",
+                    callback_data="admin:set:forbidden_date",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Add forbidden period",
+                    callback_data="admin:set:forbidden_period",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Edit new request text",
+                    callback_data="admin:set:new_request_text",
+                )
+            ],
+            [InlineKeyboardButton(text="Back to admin menu", callback_data="admin:menu")],
+        ]
+    )

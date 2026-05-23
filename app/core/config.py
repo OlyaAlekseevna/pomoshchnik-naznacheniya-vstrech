@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     telegram_invite_token: str | None = None
     telegram_polling_enabled: bool = True
     telegram_drop_pending_updates_on_start: bool = False
+    telegram_admin_id: int | None = None
 
     postgres_host: str = "postgres"
     postgres_port: int = 5432
@@ -65,6 +66,7 @@ class Settings(BaseSettings):
             "telegram_invite_token_configured": bool(self.telegram_invite_token),
             "telegram_polling_enabled": self.telegram_polling_enabled,
             "telegram_drop_pending_updates_on_start": self.telegram_drop_pending_updates_on_start,
+            "telegram_admin_id_configured": self.telegram_admin_id is not None,
         }
 
 

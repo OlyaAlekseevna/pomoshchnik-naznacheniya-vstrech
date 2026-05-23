@@ -14,6 +14,7 @@ from app.bot.keyboards import (
     BACK_TEXT,
     BOOK_TEXT,
     MY_REQUESTS_TEXT,
+    admin_request_actions_keyboard,
     back_keyboard,
     consent_keyboard,
     consultation_keyboard,
@@ -209,6 +210,38 @@ def _summary_text(data: dict[str, object]) -> str:
     )
 
 
+async def _notify_admin_about_new_request(
+    message: Message,
+    request_id: int,
+    user_telegram_id: int,
+    is_user_blocked: bool,
+) -> None:
+    settings = get_settings()
+    if settings.telegram_admin_id is None:
+        return
+    try:
+        await message.bot.send_message(
+            chat_id=settings.telegram_admin_id,
+            text=(
+                "New consultation request received.\n"
+                f"Request #{request_id}\n"
+                f"User telegram id: {user_telegram_id}"
+            ),
+            reply_markup=admin_request_actions_keyboard(
+                request_id=request_id,
+                is_user_blocked=is_user_blocked,
+            ),
+        )
+    except TelegramAPIError:
+        logger.exception(
+            "Failed to send admin notification about new request.",
+            extra=_with_event(
+                {"request_id": request_id, "target_admin_id": settings.telegram_admin_id},
+                "admin_notification_send_error",
+            ),
+        )
+
+
 @router.message(CommandStart())
 async def on_start(message: Message, state: FSMContext) -> None:
     if message.from_user is None:
@@ -268,6 +301,23 @@ async def on_start(message: Message, state: FSMContext) -> None:
 async def start_booking_flow(message: Message, state: FSMContext) -> None:
     if message.from_user is None:
         return
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        user = await get_user_by_telegram_id(session, message.from_user.id)
+        if user is not None and user.is_blocked:
+            logger.warning(
+                "Blocked user attempted to create a request.",
+                extra=_with_event(
+                    {"telegram_user_id": message.from_user.id},
+                    "user_blocked_attempt",
+                ),
+            )
+            await _safe_answer(
+                message,
+                "Запись временно недоступна. Свяжитесь с владельцем календаря.",
+                reply_markup=main_menu_keyboard(),
+            )
+            return
     logger.info(
         "User started booking flow.",
         extra=_with_event({"telegram_user_id": message.from_user.id}, "user_booking_started"),
@@ -540,6 +590,14 @@ async def on_submit_request(query: CallbackQuery, state: FSMContext) -> None:
             last_name=query.from_user.last_name,
             username=query.from_user.username,
         )
+        if user.is_blocked:
+            await _safe_reply_callback(query, "Запись недоступна.")
+            await _safe_answer(
+                query.message,
+                "Запись временно недоступна. Свяжитесь с владельцем календаря.",
+                reply_markup=main_menu_keyboard(),
+            )
+            return
         settings = await get_schedule_settings_or_fail(session)
         rules = slot_rules_from_settings(settings)
         available_slots = await calculate_slots_for_date(
@@ -585,6 +643,12 @@ async def on_submit_request(query: CallbackQuery, state: FSMContext) -> None:
         query.message,
         f"Заявка #{request.id} создана и отправлена на согласование.",
         reply_markup=main_menu_keyboard(),
+    )
+    await _notify_admin_about_new_request(
+        message=query.message,
+        request_id=request.id,
+        user_telegram_id=query.from_user.id,
+        is_user_blocked=user.is_blocked,
     )
 
 

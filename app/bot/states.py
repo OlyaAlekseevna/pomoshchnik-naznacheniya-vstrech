@@ -13,3 +13,9 @@ class BookingFlowState(StatesGroup):
     confirming_consent = State()
     confirming_summary = State()
     editing_goal = State()
+
+
+class AdminFlowState(StatesGroup):
+    entering_alternative_slot = State()
+    editing_setting_value = State()
+    entering_manual_meeting = State()

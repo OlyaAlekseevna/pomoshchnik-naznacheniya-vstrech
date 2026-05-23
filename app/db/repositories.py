@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import RequestChangedByRole, RequestStatus, ReservationStatus
 from app.db.models import (
+    AdminAuditLog,
     ConsultationRequest,
+    ForbiddenDate,
+    ForbiddenPeriod,
     RequestStatusHistory,
     ScheduleSettings,
     SlotReservation,
@@ -344,3 +347,114 @@ async def get_active_reservation_by_request_id(
         )
     )
     return (await session.execute(query)).scalars().first()
+
+
+async def list_requests_for_admin(
+    session: AsyncSession,
+    limit: int = 20,
+) -> list[ConsultationRequest]:
+    query = select(ConsultationRequest).order_by(ConsultationRequest.created_at.desc()).limit(limit)
+    return (await session.execute(query)).scalars().all()
+
+
+async def get_request_by_id(
+    session: AsyncSession,
+    request_id: int,
+) -> ConsultationRequest | None:
+    query = select(ConsultationRequest).where(ConsultationRequest.id == request_id)
+    return (await session.execute(query)).scalars().first()
+
+
+async def list_request_status_history(
+    session: AsyncSession,
+    request_id: int,
+) -> list[RequestStatusHistory]:
+    query = (
+        select(RequestStatusHistory)
+        .where(RequestStatusHistory.request_id == request_id)
+        .order_by(RequestStatusHistory.created_at.asc())
+    )
+    return (await session.execute(query)).scalars().all()
+
+
+async def get_user_by_id(
+    session: AsyncSession,
+    user_id: int,
+) -> User | None:
+    query = select(User).where(User.id == user_id)
+    return (await session.execute(query)).scalars().first()
+
+
+async def set_user_blocked(
+    session: AsyncSession,
+    user_id: int,
+    blocked: bool,
+) -> User:
+    user = await get_user_by_id(session, user_id)
+    if user is None:
+        raise LookupError("User not found.")
+    user.is_blocked = blocked
+    await session.flush()
+    return user
+
+
+async def update_schedule_settings(
+    session: AsyncSession,
+    **fields: object,
+) -> ScheduleSettings:
+    settings = await get_schedule_settings(session)
+    for key, value in fields.items():
+        if not hasattr(settings, key):
+            raise ValueError(f"Unknown settings field: {key}")
+        setattr(settings, key, value)
+    await session.flush()
+    return settings
+
+
+async def add_forbidden_date(
+    session: AsyncSession,
+    day: date,
+    reason: str | None = None,
+) -> ForbiddenDate:
+    entity = ForbiddenDate(day=day, reason=reason, created_at=datetime.now(UTC))
+    session.add(entity)
+    await session.flush()
+    return entity
+
+
+async def add_forbidden_period(
+    session: AsyncSession,
+    start_at: datetime,
+    end_at: datetime,
+    reason: str | None = None,
+) -> ForbiddenPeriod:
+    entity = ForbiddenPeriod(
+        start_at=start_at,
+        end_at=end_at,
+        reason=reason,
+        created_at=datetime.now(UTC),
+    )
+    session.add(entity)
+    await session.flush()
+    return entity
+
+
+async def create_admin_audit_log(
+    session: AsyncSession,
+    admin_telegram_id: int,
+    action_type: str,
+    request_id: int | None = None,
+    target_user_id: int | None = None,
+    payload: dict[str, str] | None = None,
+) -> AdminAuditLog:
+    entry = AdminAuditLog(
+        admin_telegram_id=admin_telegram_id,
+        action_type=action_type,
+        request_id=request_id,
+        target_user_id=target_user_id,
+        payload=payload,
+        created_at=datetime.now(UTC),
+    )
+    session.add(entry)
+    await session.flush()
+    return entry

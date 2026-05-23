@@ -9,8 +9,9 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.bot.admin_handlers import configure_session_factory as configure_admin_session_factory
 from app.bot.dispatcher import create_bot, create_dispatcher
-from app.bot.handlers import configure_session_factory
+from app.bot.handlers import configure_session_factory as configure_user_session_factory
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import create_session_factory
@@ -85,7 +86,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_factory = create_session_factory(engine)
         redis_client: Redis = create_redis_client(app_settings.redis_url)
         dispatcher = create_dispatcher()
-        configure_session_factory(session_factory)
+        configure_user_session_factory(session_factory)
+        configure_admin_session_factory(session_factory)
         bot_token = (
             app_settings.telegram_bot_token.get_secret_value()
             if app_settings.telegram_bot_token is not None
