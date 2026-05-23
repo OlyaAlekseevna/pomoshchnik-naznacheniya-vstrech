@@ -15,6 +15,7 @@ from app.bot.handlers import configure_session_factory as configure_user_session
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.session import create_session_factory
+from app.services.background_jobs import BackgroundJobsService
 from app.services.db import close_engine, create_engine, ping_database
 from app.services.redis_client import close_redis, create_redis_client, ping_redis
 
@@ -139,14 +140,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.dispatcher = dispatcher
         application.state.bot = bot
         application.state.polling_task = polling_task
+        background_jobs = BackgroundJobsService(
+            settings=app_settings,
+            session_factory=session_factory,
+            bot=bot,
+        )
+        application.state.background_jobs = background_jobs
 
         await _run_external_checks(app_settings, engine, redis_client)
+        background_jobs.start()
 
         logger.info("Application started.", extra={"event": "app_started"})
         try:
             yield
         finally:
             logger.info("Application shutdown initiated.", extra={"event": "app_shutdown_started"})
+            background_jobs = getattr(application.state, "background_jobs", None)
+            if background_jobs is not None:
+                background_jobs.shutdown()
             polling_task = getattr(application.state, "polling_task", None)
             if polling_task is not None:
                 polling_task.cancel()

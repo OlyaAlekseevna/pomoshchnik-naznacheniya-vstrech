@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     telegram_drop_pending_updates_on_start: bool = False
     telegram_admin_id: int | None = None
 
+    background_jobs_enabled: bool = True
+    background_reservation_check_interval_seconds: int = 60
+    background_reminders_check_interval_seconds: int = 60
+    background_technical_check_interval_seconds: int = 120
+    background_admin_reminder_after_hours: int = 12
+    background_meeting_reminder_before_minutes: int = 120
+    background_notification_retry_delay_seconds: int = 60
+    background_notification_max_attempts: int = 3
+    background_technical_errors_lookback_hours: int = 48
+
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: SecretStr | None = None
     google_oauth_redirect_uri: str = "urn:ietf:wg:oauth:2.0:oob"
@@ -73,6 +83,27 @@ class Settings(BaseSettings):
             "telegram_polling_enabled": self.telegram_polling_enabled,
             "telegram_drop_pending_updates_on_start": self.telegram_drop_pending_updates_on_start,
             "telegram_admin_id_configured": self.telegram_admin_id is not None,
+            "background_jobs_enabled": self.background_jobs_enabled,
+            "background_reservation_check_interval_seconds": (
+                self.background_reservation_check_interval_seconds
+            ),
+            "background_reminders_check_interval_seconds": (
+                self.background_reminders_check_interval_seconds
+            ),
+            "background_technical_check_interval_seconds": (
+                self.background_technical_check_interval_seconds
+            ),
+            "background_admin_reminder_after_hours": self.background_admin_reminder_after_hours,
+            "background_meeting_reminder_before_minutes": (
+                self.background_meeting_reminder_before_minutes
+            ),
+            "background_notification_retry_delay_seconds": (
+                self.background_notification_retry_delay_seconds
+            ),
+            "background_notification_max_attempts": self.background_notification_max_attempts,
+            "background_technical_errors_lookback_hours": (
+                self.background_technical_errors_lookback_hours
+            ),
             "google_oauth_client_id_configured": bool(self.google_oauth_client_id),
             "google_oauth_client_secret_configured": bool(self.google_oauth_client_secret),
             "google_calendar_id": self.google_calendar_id,

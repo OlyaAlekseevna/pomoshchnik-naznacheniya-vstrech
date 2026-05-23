@@ -516,7 +516,23 @@ async def approve_request_with_calendar(
     )
 
     credentials = await get_google_oauth_credentials(session)
-    access_token, refreshed_tokens = await service.get_valid_access_token(credentials)
+    try:
+        access_token, refreshed_tokens = await service.get_valid_access_token(credentials)
+    except GoogleAuthRequiredError as error:
+        await create_technical_error(
+            session=session,
+            source="google_calendar",
+            request_id=request.id,
+            user_id=request.user_id,
+            error_code=error.__class__.__name__,
+            error_message=str(error),
+            details={"stage": "approve_request_access_token"},
+        )
+        logger.warning(
+            "Google OAuth requires reauthorization during approval.",
+            extra={"event": "google_oauth_reauthorization_required", "request_id": request.id},
+        )
+        raise
     if refreshed_tokens is not None and credentials is not None:
         await upsert_google_oauth_credentials(
             session=session,

@@ -23,7 +23,13 @@ from app.db.defaults import (
     DEFAULT_USER_WITHOUT_INVITATION_TEXT,
     DEFAULT_WORKING_DAYS,
 )
-from app.db.enums import GoogleEventStatus, RequestChangedByRole, RequestStatus, ReservationStatus
+from app.db.enums import (
+    GoogleEventStatus,
+    NotificationDeliveryStatus,
+    RequestChangedByRole,
+    RequestStatus,
+    ReservationStatus,
+)
 
 
 class User(TimestampMixin, Base):
@@ -277,3 +283,37 @@ class TechnicalError(Base):
     error_message: Mapped[str] = mapped_column(Text, nullable=False)
     details: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class NotificationDelivery(TimestampMixin, Base):
+    __tablename__ = "notification_deliveries"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    dedupe_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    notification_type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("consultation_requests.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    technical_error_id: Mapped[int | None] = mapped_column(
+        ForeignKey("technical_errors.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    target_telegram_user_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[NotificationDeliveryStatus] = mapped_column(
+        Enum(NotificationDeliveryStatus, name="notification_delivery_status", native_enum=False),
+        nullable=False,
+        index=True,
+        default=NotificationDeliveryStatus.PENDING,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -29,3 +29,9 @@ class GoogleEventStatus(StrEnum):
     PENDING = "pending"
     CREATED = "created"
     FAILED = "failed"
+
+
+class NotificationDeliveryStatus(StrEnum):
+    PENDING = "pending"
+    SENT = "sent"
+    FAILED = "failed"

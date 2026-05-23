@@ -1,11 +1,17 @@
 import logging
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.enums import GoogleEventStatus, RequestChangedByRole, RequestStatus, ReservationStatus
+from app.db.enums import (
+    GoogleEventStatus,
+    NotificationDeliveryStatus,
+    RequestChangedByRole,
+    RequestStatus,
+    ReservationStatus,
+)
 from app.db.models import (
     AdminAuditLog,
     ConsultationRequest,
@@ -13,6 +19,7 @@ from app.db.models import (
     ForbiddenPeriod,
     GoogleCalendarEvent,
     GoogleOAuthCredential,
+    NotificationDelivery,
     RequestStatusHistory,
     ScheduleSettings,
     SlotReservation,
@@ -551,3 +558,166 @@ async def get_latest_google_calendar_event_by_request_id(
         .limit(1)
     )
     return (await session.execute(query)).scalars().first()
+
+
+async def list_expired_active_reservations(
+    session: AsyncSession,
+    now: datetime,
+) -> list[tuple[SlotReservation, ConsultationRequest]]:
+    query = (
+        select(SlotReservation, ConsultationRequest)
+        .join(ConsultationRequest, ConsultationRequest.id == SlotReservation.request_id)
+        .where(
+            and_(
+                SlotReservation.status == ReservationStatus.ACTIVE,
+                SlotReservation.expires_at <= now,
+                ConsultationRequest.status.in_(
+                    [
+                        RequestStatus.DRAFT,
+                        RequestStatus.PENDING_APPROVAL,
+                        RequestStatus.UPDATED_BY_USER,
+                    ]
+                ),
+            )
+        )
+        .order_by(SlotReservation.expires_at.asc())
+    )
+    rows = (await session.execute(query)).all()
+    return [(row[0], row[1]) for row in rows]
+
+
+async def list_requests_for_admin_12h_reminder(
+    session: AsyncSession,
+    created_before: datetime,
+) -> list[tuple[ConsultationRequest, User]]:
+    query = (
+        select(ConsultationRequest, User)
+        .join(User, User.id == ConsultationRequest.user_id)
+        .where(
+            and_(
+                ConsultationRequest.status.in_(
+                    [
+                        RequestStatus.PENDING_APPROVAL,
+                        RequestStatus.UPDATED_BY_USER,
+                    ]
+                ),
+                ConsultationRequest.created_at <= created_before,
+            )
+        )
+        .order_by(ConsultationRequest.created_at.asc())
+    )
+    rows = (await session.execute(query)).all()
+    return [(row[0], row[1]) for row in rows]
+
+
+async def list_approved_requests_with_users_in_date_range(
+    session: AsyncSession,
+    date_from: date,
+    date_to: date,
+) -> list[tuple[ConsultationRequest, User]]:
+    query = (
+        select(ConsultationRequest, User)
+        .join(User, User.id == ConsultationRequest.user_id)
+        .where(
+            and_(
+                ConsultationRequest.status == RequestStatus.APPROVED,
+                ConsultationRequest.meeting_date >= date_from,
+                ConsultationRequest.meeting_date <= date_to,
+            )
+        )
+        .order_by(ConsultationRequest.meeting_date.asc(), ConsultationRequest.start_time.asc())
+    )
+    rows = (await session.execute(query)).all()
+    return [(row[0], row[1]) for row in rows]
+
+
+async def list_google_technical_errors_since(
+    session: AsyncSession,
+    created_after: datetime,
+    limit: int = 100,
+) -> list[TechnicalError]:
+    query = (
+        select(TechnicalError)
+        .where(
+            and_(
+                TechnicalError.source == "google_calendar",
+                TechnicalError.created_at >= created_after,
+            )
+        )
+        .order_by(TechnicalError.created_at.asc())
+        .limit(limit)
+    )
+    return (await session.execute(query)).scalars().all()
+
+
+async def get_notification_delivery_by_key(
+    session: AsyncSession,
+    dedupe_key: str,
+) -> NotificationDelivery | None:
+    query = select(NotificationDelivery).where(NotificationDelivery.dedupe_key == dedupe_key)
+    return (await session.execute(query)).scalars().first()
+
+
+async def get_or_create_notification_delivery(
+    session: AsyncSession,
+    dedupe_key: str,
+    notification_type: str,
+    target_telegram_user_id: int | None,
+    request_id: int | None = None,
+    technical_error_id: int | None = None,
+    scheduled_for: datetime | None = None,
+) -> NotificationDelivery:
+    delivery = await get_notification_delivery_by_key(session, dedupe_key=dedupe_key)
+    if delivery is not None:
+        return delivery
+    delivery = NotificationDelivery(
+        dedupe_key=dedupe_key,
+        notification_type=notification_type,
+        request_id=request_id,
+        technical_error_id=technical_error_id,
+        target_telegram_user_id=target_telegram_user_id,
+        status=NotificationDeliveryStatus.PENDING,
+        attempts=0,
+        sent_at=None,
+        next_retry_at=None,
+        scheduled_for=scheduled_for,
+        last_error=None,
+    )
+    session.add(delivery)
+    await session.flush()
+    return delivery
+
+
+async def mark_notification_delivery_sent(
+    session: AsyncSession,
+    delivery: NotificationDelivery,
+    sent_at: datetime,
+) -> NotificationDelivery:
+    delivery.status = NotificationDeliveryStatus.SENT
+    delivery.attempts += 1
+    delivery.sent_at = sent_at
+    delivery.next_retry_at = None
+    delivery.last_error = None
+    await session.flush()
+    return delivery
+
+
+async def mark_notification_delivery_retry(
+    session: AsyncSession,
+    delivery: NotificationDelivery,
+    now: datetime,
+    error_text: str,
+    retry_delay_seconds: int,
+    max_attempts: int,
+    retryable: bool,
+) -> NotificationDelivery:
+    delivery.attempts += 1
+    delivery.last_error = error_text
+    if retryable and delivery.attempts < max_attempts:
+        delivery.status = NotificationDeliveryStatus.PENDING
+        delivery.next_retry_at = now + timedelta(seconds=retry_delay_seconds)
+    else:
+        delivery.status = NotificationDeliveryStatus.FAILED
+        delivery.next_retry_at = None
+    await session.flush()
+    return delivery
