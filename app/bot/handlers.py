@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
@@ -45,10 +46,22 @@ from app.bot.user_flow_service import (
 )
 from app.core.config import get_settings
 from app.db.defaults import DEFAULT_USER_WITHOUT_INVITATION_TEXT
-from app.db.repositories import get_or_create_user_by_telegram_id, get_user_by_telegram_id
+from app.db.repositories import (
+    create_technical_error,
+    get_google_oauth_credentials,
+    get_or_create_user_by_telegram_id,
+    get_user_by_telegram_id,
+    upsert_google_oauth_credentials,
+)
 from app.domain.exceptions import BusinessRuleViolation
 from app.domain.lifecycle import BookingDraftState, update_draft_date, update_draft_duration
-from app.domain.scheduling import build_week_window
+from app.domain.scheduling import TimeInterval, build_week_window
+from app.services.google_calendar import (
+    GoogleAuthRequiredError,
+    GoogleCalendarService,
+    GoogleIntegrationError,
+    GooglePermissionDeniedError,
+)
 
 router = Router(name="user-flow-router")
 logger = logging.getLogger(__name__)
@@ -78,6 +91,68 @@ def _with_event(data: dict[str, object], event: str) -> dict[str, object]:
     payload = {"event": event}
     payload.update(data)
     return payload
+
+
+def _google_service() -> GoogleCalendarService:
+    return GoogleCalendarService(get_settings())
+
+
+async def _google_busy_intervals_for_date(
+    session: AsyncSession,
+    meeting_date: date,
+    rules,
+) -> tuple[list[TimeInterval], bool]:
+    service = _google_service()
+    if not service.is_oauth_configured():
+        return [], False
+
+    credentials = await get_google_oauth_credentials(session)
+    if credentials is None:
+        return [], True
+
+    try:
+        access_token, refreshed_tokens = await service.get_valid_access_token(credentials)
+    except GoogleAuthRequiredError:
+        return [], True
+
+    if refreshed_tokens is not None:
+        await upsert_google_oauth_credentials(
+            session=session,
+            refresh_token=credentials.refresh_token,
+            access_token=refreshed_tokens.access_token,
+            access_token_expires_at=refreshed_tokens.expires_at,
+            scope=refreshed_tokens.scope or credentials.scope,
+            token_type=refreshed_tokens.token_type or credentials.token_type,
+        )
+
+    try:
+        tz = ZoneInfo(rules.timezone)
+    except ZoneInfoNotFoundError:
+        logger.warning(
+            "Timezone is unknown while requesting Google busy intervals.",
+            extra=_with_event({"timezone": rules.timezone}, "timezone_fallback_used"),
+        )
+        tz = UTC
+
+    day_start = datetime.combine(meeting_date, rules.working_day_start, tzinfo=tz)
+    day_end = datetime.combine(meeting_date, rules.working_day_end, tzinfo=tz)
+    try:
+        busy = await service.list_busy_intervals(
+            access_token=access_token,
+            time_min=day_start,
+            time_max=day_end,
+            timezone=rules.timezone,
+        )
+    except (GoogleIntegrationError, GooglePermissionDeniedError):
+        logger.exception(
+            "Failed to read busy intervals from Google Calendar.",
+            extra=_with_event(
+                {"meeting_date": meeting_date.isoformat()},
+                "google_busy_fetch_error",
+            ),
+        )
+        return [], True
+    return busy, False
 
 
 async def _safe_answer(message: Message, text: str, **kwargs) -> None:
@@ -170,15 +245,32 @@ async def _show_dates_step(message: Message, state: FSMContext) -> None:
 async def _show_slots_step(message: Message, state: FSMContext, meeting_date: date) -> None:
     data = await state.get_data()
     duration_minutes = int(data["duration_minutes"])
+    google_unavailable = False
     session_factory = _require_session_factory()
     async with session_factory() as session:
         settings = await get_schedule_settings_or_fail(session)
         rules = slot_rules_from_settings(settings)
+        google_busy_intervals, google_unavailable = await _google_busy_intervals_for_date(
+            session=session,
+            meeting_date=meeting_date,
+            rules=rules,
+        )
+        if google_unavailable:
+            await session.rollback()
+            await state.set_state(BookingFlowState.choosing_slot)
+            await _safe_answer(
+                message,
+                "Свободные слоты временно недоступны: нет доступа к Google Calendar. "
+                "Попробуйте позже.",
+                reply_markup=back_keyboard(),
+            )
+            return
         slots = await calculate_slots_for_date(
             session=session,
             meeting_date=meeting_date,
             duration_minutes=duration_minutes,
             rules=rules,
+            external_occupied_intervals=google_busy_intervals,
         )
     await state.set_state(BookingFlowState.choosing_slot)
     await _safe_answer(
@@ -600,11 +692,32 @@ async def on_submit_request(query: CallbackQuery, state: FSMContext) -> None:
             return
         settings = await get_schedule_settings_or_fail(session)
         rules = slot_rules_from_settings(settings)
+        google_busy_intervals, google_unavailable = await _google_busy_intervals_for_date(
+            session=session,
+            meeting_date=selected_slot.start_at.date(),
+            rules=rules,
+        )
+        if google_unavailable:
+            await create_technical_error(
+                session=session,
+                source="google_calendar",
+                error_message="Google calendar busy intervals are unavailable during submit.",
+                user_id=user.id,
+                details={"stage": "submit_request"},
+            )
+            await session.commit()
+            await _safe_reply_callback(query, "Google Calendar недоступен.")
+            await _safe_answer(
+                query.message,
+                "Свободные слоты временно недоступны. Попробуйте позже.",
+            )
+            return
         available_slots = await calculate_slots_for_date(
             session=session,
             meeting_date=selected_slot.start_at.date(),
             duration_minutes=int(data["duration_minutes"]),
             rules=rules,
+            external_occupied_intervals=google_busy_intervals,
         )
         try:
             ensure_slot_still_available(selected_slot, available_slots)

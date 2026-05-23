@@ -19,3 +19,4 @@ class AdminFlowState(StatesGroup):
     entering_alternative_slot = State()
     editing_setting_value = State()
     entering_manual_meeting = State()
+    entering_google_auth_code = State()

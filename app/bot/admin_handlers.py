@@ -12,11 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.admin_service import (
     ALTERNATIVE_REJECTION_REASON,
+    SlotUnavailableOnApprovalError,
     apply_setting_update,
-    approve_request,
+    approve_request_with_calendar,
+    build_google_oauth_instructions,
     build_history_text,
     build_request_card,
     build_settings_summary,
+    connect_google_oauth_with_code,
     get_request_history,
     get_requests_for_admin,
     get_user_for_request,
@@ -34,8 +37,14 @@ from app.bot.keyboards import (
 )
 from app.bot.states import AdminFlowState
 from app.core.config import get_settings
-from app.db.repositories import get_schedule_settings
+from app.db.repositories import get_request_by_id, get_schedule_settings
 from app.domain.exceptions import BusinessRuleViolation
+from app.services.google_calendar import (
+    GoogleAuthRequiredError,
+    GoogleCalendarService,
+    GoogleIntegrationError,
+    GooglePermissionDeniedError,
+)
 
 router = Router(name="admin-flow-router")
 logger = logging.getLogger(__name__)
@@ -52,6 +61,10 @@ def _require_session_factory() -> async_sessionmaker[AsyncSession]:
     if _session_factory is None:
         raise RuntimeError("Session factory is not configured for admin bot handlers.")
     return _session_factory
+
+
+def _google_service_from_settings() -> GoogleCalendarService:
+    return GoogleCalendarService(get_settings())
 
 
 async def _safe_answer(message: Message, text: str, **kwargs) -> None:
@@ -103,7 +116,7 @@ async def _admin_guard_for_message(message: Message) -> bool:
         "Non-admin tried to open admin section.",
         extra={"event": "admin_access_denied", "telegram_user_id": telegram_id},
     )
-    await _safe_answer(message, "Access denied: admin only.")
+    await _safe_answer(message, "Доступ запрещен: раздел только для администратора.")
     return False
 
 
@@ -120,9 +133,9 @@ async def _admin_guard_for_callback(query: CallbackQuery) -> bool:
             "callback_data": query.data,
         },
     )
-    await _safe_callback(query, "Access denied")
+    await _safe_callback(query, "Доступ запрещен")
     if query.message is not None:
-        await _safe_answer(query.message, "Access denied: admin only.")
+        await _safe_answer(query.message, "Доступ запрещен: раздел только для администратора.")
     return False
 
 
@@ -132,24 +145,24 @@ def _extract_request_id(raw_callback_data: str) -> int:
 
 def _setting_prompt(setting_key: str) -> str:
     prompts = {
-        "working_days": "Enter weekdays as comma-separated values: monday,tuesday,...",
-        "working_hours": "Enter working hours in format HH:MM-HH:MM",
-        "durations": "Enter durations in minutes, comma-separated. Example: 15,30,45,90",
-        "min_notice": "Enter min notice in minutes. Example: 120",
-        "buffer": "Enter buffer in minutes. Example: 60",
-        "daily_limit": "Enter daily consultations limit. Example: 3",
-        "horizon": "Enter booking horizon in days. Example: 28",
+        "working_days": "Введите дни недели через запятую: monday,tuesday,...",
+        "working_hours": "Введите рабочие часы в формате HH:MM-HH:MM",
+        "durations": "Введите длительности в минутах через запятую. Пример: 15,30,45,90",
+        "min_notice": "Введите минимальное время до встречи в минутах. Пример: 120",
+        "buffer": "Введите буфер в минутах. Пример: 60",
+        "daily_limit": "Введите лимит консультаций в день. Пример: 3",
+        "horizon": "Введите горизонт записи в днях. Пример: 28",
         "forbidden_date": (
-            "Enter forbidden date. Optional reason via '|'. "
-            "Example: 2026-06-01|holiday"
+            "Введите запрещенную дату. Причина опционально через '|'. "
+            "Пример: 2026-06-01|выходной"
         ),
         "forbidden_period": (
-            "Enter forbidden period. Optional reason via '|'. "
-            "Example: 2026-06-01 10:00 - 2026-06-01 14:00|maintenance"
+            "Введите запрещенный период. Причина опционально через '|'. "
+            "Пример: 2026-06-01 10:00 - 2026-06-01 14:00|технические работы"
         ),
-        "new_request_text": "Enter new text template for admin new-request notification.",
+        "new_request_text": "Введите новый шаблон уведомления администратору о заявке.",
     }
-    return prompts.get(setting_key, "Enter value:")
+    return prompts.get(setting_key, "Введите значение:")
 
 
 @router.message(Command("admin"))
@@ -164,7 +177,7 @@ async def open_admin_panel(message: Message, state: FSMContext) -> None:
             "telegram_user_id": message.from_user.id if message.from_user else None,
         },
     )
-    await _safe_answer(message, "Admin panel:", reply_markup=admin_main_keyboard())
+    await _safe_answer(message, "Панель администратора:", reply_markup=admin_main_keyboard())
 
 
 @router.callback_query(F.data == "admin:menu")
@@ -172,9 +185,13 @@ async def admin_menu(query: CallbackQuery, state: FSMContext) -> None:
     if not await _admin_guard_for_callback(query):
         return
     await state.clear()
-    await _safe_callback(query, "Opened admin menu.")
+    await _safe_callback(query, "Открыто админ-меню.")
     if query.message is not None:
-        await _safe_answer(query.message, "Admin panel:", reply_markup=admin_main_keyboard())
+        await _safe_answer(
+            query.message,
+            "Панель администратора:",
+            reply_markup=admin_main_keyboard(),
+        )
 
 
 @router.callback_query(F.data == "admin:req:list")
@@ -186,11 +203,11 @@ async def list_requests(query: CallbackQuery, state: FSMContext) -> None:
     async with session_factory() as session:
         requests = await get_requests_for_admin(session=session, limit=20)
         if not requests:
-            await _safe_callback(query, "No requests.")
+            await _safe_callback(query, "Заявок нет.")
             if query.message is not None:
-                await _safe_answer(query.message, "No requests found.")
+                await _safe_answer(query.message, "Заявки не найдены.")
             return
-        await _safe_callback(query, "Requests loaded.")
+        await _safe_callback(query, "Заявки загружены.")
         if query.message is None:
             return
         for item in requests:
@@ -213,7 +230,7 @@ async def open_settings(query: CallbackQuery, state: FSMContext) -> None:
     session_factory = _require_session_factory()
     async with session_factory() as session:
         settings = await get_schedule_settings(session)
-    await _safe_callback(query, "Settings loaded.")
+    await _safe_callback(query, "Настройки загружены.")
     if query.message is not None:
         await _safe_answer(
             query.message,
@@ -229,7 +246,7 @@ async def select_setting_to_edit(query: CallbackQuery, state: FSMContext) -> Non
     setting_key = query.data.split(":", maxsplit=2)[2]
     await state.set_state(AdminFlowState.editing_setting_value)
     await state.update_data(admin_setting_key=setting_key)
-    await _safe_callback(query, "Send new value.")
+    await _safe_callback(query, "Отправьте новое значение.")
     if query.message is not None:
         await _safe_answer(query.message, _setting_prompt(setting_key))
 
@@ -242,7 +259,7 @@ async def apply_setting_value(message: Message, state: FSMContext) -> None:
     setting_key = str(data.get("admin_setting_key", "")).strip()
     if not setting_key:
         await state.clear()
-        await _safe_answer(message, "No setting selected. Open /admin again.")
+        await _safe_answer(message, "Параметр не выбран. Откройте /admin снова.")
         return
     raw_value = (message.text or "").strip()
     session_factory = _require_session_factory()
@@ -255,7 +272,7 @@ async def apply_setting_value(message: Message, state: FSMContext) -> None:
                 raw_value=raw_value,
             )
         except Exception as error:
-            await _safe_answer(message, f"Invalid value: {error}")
+            await _safe_answer(message, f"Некорректное значение: {error}")
             return
         await session.commit()
 
@@ -280,6 +297,51 @@ async def apply_setting_value(message: Message, state: FSMContext) -> None:
     await _safe_answer(message, summary_text, reply_markup=admin_settings_keyboard())
 
 
+@router.callback_query(F.data == "admin:google:connect")
+async def start_google_connect(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.set_state(AdminFlowState.entering_google_auth_code)
+    settings = get_settings()
+    instructions = build_google_oauth_instructions(
+        settings=settings,
+        service=_google_service_from_settings(),
+    )
+    await _safe_callback(query, "Инструкция отправлена.")
+    if query.message is not None:
+        await _safe_answer(
+            query.message,
+            instructions,
+            reply_markup=admin_settings_keyboard(),
+        )
+
+
+@router.message(AdminFlowState.entering_google_auth_code)
+async def finish_google_connect(message: Message, state: FSMContext) -> None:
+    if not await _admin_guard_for_message(message):
+        return
+    authorization_code = (message.text or "").strip()
+    if not authorization_code:
+        await _safe_answer(message, "Код пустой. Вставьте code из шага Google OAuth.")
+        return
+
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        try:
+            result_text = await connect_google_oauth_with_code(
+                session=session,
+                admin_telegram_id=message.from_user.id,
+                authorization_code=authorization_code,
+                service=_google_service_from_settings(),
+            )
+        except (GoogleIntegrationError, ValueError) as error:
+            await _safe_answer(message, f"Не удалось подключить Google OAuth: {error}")
+            return
+        await session.commit()
+    await state.clear()
+    await _safe_answer(message, result_text, reply_markup=admin_settings_keyboard())
+
+
 @router.callback_query(F.data.startswith("admin:req:approve:"))
 async def approve_request_action(query: CallbackQuery, state: FSMContext) -> None:
     if not await _admin_guard_for_callback(query):
@@ -289,15 +351,62 @@ async def approve_request_action(query: CallbackQuery, state: FSMContext) -> Non
     session_factory = _require_session_factory()
     async with session_factory() as session:
         try:
-            request = await approve_request(
+            result = await approve_request_with_calendar(
                 session=session,
                 request_id=request_id,
                 admin_telegram_id=query.from_user.id,
+                settings=get_settings(),
+                service=_google_service_from_settings(),
             )
-        except (LookupError, BusinessRuleViolation):
-            await _safe_callback(query, "Cannot approve this request.")
+        except LookupError:
+            await _safe_callback(query, "Нельзя согласовать эту заявку.")
             return
-        user = await get_user_for_request(session, request)
+        except SlotUnavailableOnApprovalError:
+            await session.commit()
+            request = await get_request_by_id(session, request_id=request_id)
+            user = await get_user_for_request(session, request) if request is not None else None
+            await _safe_callback(query, "Слот уже занят.")
+            if query.message is not None:
+                await _safe_answer(
+                    query.message,
+                    (
+                        f"Заявка #{request_id}: слот уже занят при повторной проверке. "
+                        "Попросите пользователя выбрать новое время."
+                    ),
+                )
+            if user is not None and query.message is not None:
+                await _safe_notify_user(
+                    query.message.bot.send_message,
+                    user.telegram_user_id,
+                    (
+                        f"По заявке #{request_id} выбранный слот уже занят. "
+                        "Пожалуйста, создайте новую заявку на другое время."
+                    ),
+                )
+            return
+        except GoogleAuthRequiredError:
+            await _safe_callback(query, "Нужна повторная авторизация Google.")
+            if query.message is not None:
+                await _safe_answer(
+                    query.message,
+                    (
+                        "Google OAuth требует повторной авторизации. "
+                        "Откройте раздел «Подключить Google Calendar» в /admin."
+                    ),
+                )
+            return
+        except (GooglePermissionDeniedError, GoogleIntegrationError) as error:
+            await session.commit()
+            await _safe_callback(query, "Ошибка Google Calendar.")
+            if query.message is not None:
+                await _safe_answer(
+                    query.message,
+                    f"Не удалось создать событие в Google Calendar: {error}",
+                )
+            return
+        except (BusinessRuleViolation, RuntimeError):
+            await _safe_callback(query, "Нельзя согласовать эту заявку.")
+            return
         await session.commit()
     logger.info(
         "Admin approved request.",
@@ -307,14 +416,20 @@ async def approve_request_action(query: CallbackQuery, state: FSMContext) -> Non
             "telegram_user_id": query.from_user.id,
         },
     )
-    await _safe_callback(query, "Request approved.")
+    await _safe_callback(query, "Заявка согласована.")
     if query.message is not None:
-        await _safe_answer(query.message, f"Request #{request_id} approved.")
-    if user is not None and query.message is not None:
+        admin_message = f"Заявка #{request_id} согласована."
+        if result.event_url:
+            admin_message += f"\nСсылка на событие: {result.event_url}"
+        await _safe_answer(query.message, admin_message)
+    if result.user is not None and query.message is not None:
+        user_message = f"Ваша заявка #{request_id} согласована."
+        if result.event_url:
+            user_message += f"\nСсылка на событие: {result.event_url}"
         await _safe_notify_user(
             query.message.bot.send_message,
-            user.telegram_user_id,
-            f"Your request #{request_id} was approved.",
+            result.user.telegram_user_id,
+            user_message,
         )
 
 
@@ -331,10 +446,10 @@ async def reject_request_action(query: CallbackQuery, state: FSMContext) -> None
                 session=session,
                 request_id=request_id,
                 admin_telegram_id=query.from_user.id,
-                reason="Rejected by admin",
+                reason="Отклонено администратором",
             )
         except (LookupError, BusinessRuleViolation):
-            await _safe_callback(query, "Cannot reject this request.")
+            await _safe_callback(query, "Нельзя отклонить эту заявку.")
             return
         user = await get_user_for_request(session, request)
         await session.commit()
@@ -346,14 +461,14 @@ async def reject_request_action(query: CallbackQuery, state: FSMContext) -> None
             "telegram_user_id": query.from_user.id,
         },
     )
-    await _safe_callback(query, "Request rejected.")
+    await _safe_callback(query, "Заявка отклонена.")
     if query.message is not None:
-        await _safe_answer(query.message, f"Request #{request_id} rejected.")
+        await _safe_answer(query.message, f"Заявка #{request_id} отклонена.")
     if user is not None and query.message is not None:
         await _safe_notify_user(
             query.message.bot.send_message,
             user.telegram_user_id,
-            f"Your request #{request_id} was rejected.",
+            f"Ваша заявка #{request_id} отклонена.",
         )
 
 
@@ -364,11 +479,11 @@ async def reject_with_alternative_start(query: CallbackQuery, state: FSMContext)
     request_id = _extract_request_id(query.data)
     await state.set_state(AdminFlowState.entering_alternative_slot)
     await state.update_data(admin_alt_request_id=request_id)
-    await _safe_callback(query, "Send alternative slot.")
+    await _safe_callback(query, "Введите альтернативный слот.")
     if query.message is not None:
         await _safe_answer(
             query.message,
-            "Enter alternative slot in format YYYY-MM-DD HH:MM-HH:MM",
+            "Введите альтернативный слот в формате YYYY-MM-DD HH:MM-HH:MM",
         )
 
 
@@ -384,7 +499,7 @@ async def reject_with_alternative_finish(message: Message, state: FSMContext) ->
             raw_slot
         )
     except ValueError as error:
-        await _safe_answer(message, f"Invalid format: {error}")
+        await _safe_answer(message, f"Некорректный формат: {error}")
         return
 
     session_factory = _require_session_factory()
@@ -399,7 +514,7 @@ async def reject_with_alternative_finish(message: Message, state: FSMContext) ->
                 alternative_end_time=alternative_end_time,
             )
         except (LookupError, BusinessRuleViolation):
-            await _safe_answer(message, "Cannot set alternative slot for this request.")
+            await _safe_answer(message, "Нельзя предложить слот для этой заявки.")
             return
         user = await get_user_for_request(session, request)
         await session.commit()
@@ -415,8 +530,8 @@ async def reject_with_alternative_finish(message: Message, state: FSMContext) ->
     await _safe_answer(
         message,
         (
-            f"Request #{request_id} rejected with reason: {ALTERNATIVE_REJECTION_REASON}. "
-            f"Alternative: {alternative_date.isoformat()} "
+            f"Заявка #{request_id} отклонена с причиной: {ALTERNATIVE_REJECTION_REASON}. "
+            f"Альтернатива: {alternative_date.isoformat()} "
             f"{alternative_start_time.strftime('%H:%M')}-{alternative_end_time.strftime('%H:%M')}"
         ),
         reply_markup=admin_main_keyboard(),
@@ -426,8 +541,8 @@ async def reject_with_alternative_finish(message: Message, state: FSMContext) ->
             message.bot.send_message,
             user.telegram_user_id,
             (
-                f"Your request #{request_id} was rejected. "
-                f"Alternative slot: {alternative_date.isoformat()} "
+                f"Ваша заявка #{request_id} отклонена. "
+                f"Альтернативный слот: {alternative_date.isoformat()} "
                 f"{alternative_start_time.strftime('%H:%M')}-{alternative_end_time.strftime('%H:%M')}."
             ),
         )
@@ -441,7 +556,7 @@ async def show_request_history(query: CallbackQuery) -> None:
     session_factory = _require_session_factory()
     async with session_factory() as session:
         history = await get_request_history(session=session, request_id=request_id)
-    await _safe_callback(query, "History loaded.")
+    await _safe_callback(query, "История загружена.")
     if query.message is not None:
         await _safe_answer(
             query.message,
@@ -464,7 +579,7 @@ async def block_user_for_request(query: CallbackQuery) -> None:
                 blocked=True,
             )
         except LookupError:
-            await _safe_callback(query, "User not found.")
+            await _safe_callback(query, "Пользователь не найден.")
             return
         await session.commit()
     logger.info(
@@ -475,9 +590,9 @@ async def block_user_for_request(query: CallbackQuery) -> None:
             "target_user_id": user.id,
         },
     )
-    await _safe_callback(query, "User blocked.")
+    await _safe_callback(query, "Пользователь заблокирован.")
     if query.message is not None:
-        await _safe_answer(query.message, f"User #{user.id} blocked.")
+        await _safe_answer(query.message, f"Пользователь #{user.id} заблокирован.")
 
 
 @router.callback_query(F.data.startswith("admin:req:unblock_user:"))
@@ -495,12 +610,12 @@ async def unblock_user_for_request(query: CallbackQuery) -> None:
                 blocked=False,
             )
         except LookupError:
-            await _safe_callback(query, "User not found.")
+            await _safe_callback(query, "Пользователь не найден.")
             return
         await session.commit()
-    await _safe_callback(query, "User unblocked.")
+    await _safe_callback(query, "Пользователь разблокирован.")
     if query.message is not None:
-        await _safe_answer(query.message, f"User #{user.id} unblocked.")
+        await _safe_answer(query.message, f"Пользователь #{user.id} разблокирован.")
 
 
 @router.callback_query(F.data.startswith("admin:req:manual_create:"))
@@ -518,7 +633,7 @@ async def manual_create_for_request(query: CallbackQuery, state: FSMContext) -> 
                 admin_telegram_id=query.from_user.id,
             )
         except LookupError:
-            await _safe_callback(query, "Request not found.")
+            await _safe_callback(query, "Заявка не найдена.")
             return
         user = await get_user_for_request(session, request)
         await session.commit()
@@ -526,12 +641,15 @@ async def manual_create_for_request(query: CallbackQuery, state: FSMContext) -> 
         "Admin created meeting manually.",
         extra={"event": "admin_manual_meeting_created", "request_id": request_id},
     )
-    await _safe_callback(query, "Meeting created manually.")
+    await _safe_callback(query, "Встреча создана вручную.")
     if query.message is not None:
-        await _safe_answer(query.message, f"Manual meeting created for request #{request_id}.")
+        await _safe_answer(
+            query.message,
+            f"Встреча по заявке #{request_id} создана вручную.",
+        )
     if user is not None and query.message is not None:
         await _safe_notify_user(
             query.message.bot.send_message,
             user.telegram_user_id,
-            f"Your meeting for request #{request_id} was created manually by admin.",
+            f"Ваша встреча по заявке #{request_id} создана администратором вручную.",
         )

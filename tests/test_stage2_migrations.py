@@ -52,6 +52,7 @@ async def test_stage2_migrations_create_schema_seed_defaults_and_support_writes(
         "forbidden_periods",
         "slot_reservations",
         "google_calendar_events",
+        "google_oauth_credentials",
         "request_status_history",
         "admin_audit_logs",
         "technical_errors",

@@ -107,11 +107,19 @@ async def calculate_slots_for_date(
     duration_minutes: int,
     rules: SlotRules,
     now: datetime | None = None,
+    exclude_request_id: int | None = None,
+    external_occupied_intervals: list[TimeInterval] | None = None,
 ) -> list[SlotChoice]:
-    active_reservations = await list_active_reservations_by_date(session, meeting_date)
+    active_reservations = await list_active_reservations_by_date(
+        session=session,
+        meeting_date=meeting_date,
+        exclude_request_id=exclude_request_id,
+    )
     occupied_intervals = [
         TimeInterval(start_at=item.start_at, end_at=item.end_at) for item in active_reservations
     ]
+    if external_occupied_intervals:
+        occupied_intervals.extend(external_occupied_intervals)
     consultations_count = await count_consultations_for_date(session, meeting_date)
     intervals = calculate_free_slots(
         target_date=meeting_date,

@@ -5,12 +5,14 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.enums import RequestChangedByRole, RequestStatus, ReservationStatus
+from app.db.enums import GoogleEventStatus, RequestChangedByRole, RequestStatus, ReservationStatus
 from app.db.models import (
     AdminAuditLog,
     ConsultationRequest,
     ForbiddenDate,
     ForbiddenPeriod,
+    GoogleCalendarEvent,
+    GoogleOAuthCredential,
     RequestStatusHistory,
     ScheduleSettings,
     SlotReservation,
@@ -274,18 +276,20 @@ async def get_schedule_settings(session: AsyncSession) -> ScheduleSettings:
 async def list_active_reservations_by_date(
     session: AsyncSession,
     meeting_date: date,
+    exclude_request_id: int | None = None,
 ) -> list[SlotReservation]:
     start_of_day = datetime.combine(meeting_date, time.min, tzinfo=UTC)
     end_of_day = datetime.combine(meeting_date, time.max, tzinfo=UTC)
+    conditions = [
+        SlotReservation.status == ReservationStatus.ACTIVE,
+        SlotReservation.start_at >= start_of_day,
+        SlotReservation.start_at <= end_of_day,
+    ]
+    if exclude_request_id is not None:
+        conditions.append(SlotReservation.request_id != exclude_request_id)
     query = (
         select(SlotReservation)
-        .where(
-            and_(
-                SlotReservation.status == ReservationStatus.ACTIVE,
-                SlotReservation.start_at >= start_of_day,
-                SlotReservation.start_at <= end_of_day,
-            )
-        )
+        .where(and_(*conditions))
         .order_by(SlotReservation.start_at.asc())
     )
     return (await session.execute(query)).scalars().all()
@@ -458,3 +462,92 @@ async def create_admin_audit_log(
     session.add(entry)
     await session.flush()
     return entry
+
+
+async def get_google_oauth_credentials(session: AsyncSession) -> GoogleOAuthCredential | None:
+    query = select(GoogleOAuthCredential).order_by(GoogleOAuthCredential.id.asc()).limit(1)
+    return (await session.execute(query)).scalars().first()
+
+
+async def upsert_google_oauth_credentials(
+    session: AsyncSession,
+    refresh_token: str,
+    access_token: str | None,
+    access_token_expires_at: datetime | None,
+    scope: str | None,
+    token_type: str | None,
+) -> GoogleOAuthCredential:
+    credentials = await get_google_oauth_credentials(session)
+    if credentials is None:
+        credentials = GoogleOAuthCredential(
+            refresh_token=refresh_token,
+            access_token=access_token,
+            access_token_expires_at=access_token_expires_at,
+            scope=scope,
+            token_type=token_type,
+        )
+        session.add(credentials)
+    else:
+        credentials.refresh_token = refresh_token
+        credentials.access_token = access_token
+        credentials.access_token_expires_at = access_token_expires_at
+        credentials.scope = scope
+        credentials.token_type = token_type
+    await session.flush()
+    return credentials
+
+
+async def create_google_calendar_event(
+    session: AsyncSession,
+    request_id: int,
+    creation_status: GoogleEventStatus,
+    google_event_id: str | None = None,
+    event_url: str | None = None,
+    created_in_google_at: datetime | None = None,
+    error_text: str | None = None,
+) -> GoogleCalendarEvent:
+    record = GoogleCalendarEvent(
+        request_id=request_id,
+        google_event_id=google_event_id,
+        event_url=event_url,
+        created_in_google_at=created_in_google_at,
+        creation_status=creation_status,
+        error_text=error_text,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    session.add(record)
+    await session.flush()
+    return record
+
+
+async def update_google_calendar_event(
+    session: AsyncSession,
+    event_record: GoogleCalendarEvent,
+    creation_status: GoogleEventStatus,
+    google_event_id: str | None = None,
+    event_url: str | None = None,
+    created_in_google_at: datetime | None = None,
+    error_text: str | None = None,
+) -> GoogleCalendarEvent:
+    event_record.creation_status = creation_status
+    event_record.google_event_id = google_event_id
+    event_record.event_url = event_url
+    event_record.created_in_google_at = created_in_google_at
+    event_record.error_text = error_text
+    event_record.updated_at = datetime.now(UTC)
+    await session.flush()
+    return event_record
+
+
+async def get_latest_google_calendar_event_by_request_id(
+    session: AsyncSession,
+    request_id: int,
+) -> GoogleCalendarEvent | None:
+    query = (
+        select(GoogleCalendarEvent)
+        .where(GoogleCalendarEvent.request_id == request_id)
+        .order_by(GoogleCalendarEvent.created_at.desc())
+        .limit(1)
+    )
+    return (await session.execute(query)).scalars().first()

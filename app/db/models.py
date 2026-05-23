@@ -200,6 +200,20 @@ class GoogleCalendarEvent(Base):
     request: Mapped["ConsultationRequest"] = relationship(back_populates="google_events")
 
 
+class GoogleOAuthCredential(TimestampMixin, Base):
+    __tablename__ = "google_oauth_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    refresh_token: Mapped[str] = mapped_column(Text, nullable=False)
+    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    access_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class RequestStatusHistory(Base):
     __tablename__ = "request_status_history"
 

@@ -144,14 +144,18 @@ def week_title(week_start: date, week_end: date) -> str:
 def admin_main_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Pending requests", callback_data="admin:req:list")],
-            [InlineKeyboardButton(text="Schedule settings", callback_data="admin:settings")],
+            [InlineKeyboardButton(text="Заявки", callback_data="admin:req:list")],
+            [InlineKeyboardButton(text="Настройки расписания", callback_data="admin:settings")],
         ]
     )
 
 
 def admin_request_actions_keyboard(request_id: int, is_user_blocked: bool) -> InlineKeyboardMarkup:
-    block_action = "Unblock user" if is_user_blocked else "Block user"
+    block_action = (
+        "Разблокировать пользователя"
+        if is_user_blocked
+        else "Заблокировать пользователя"
+    )
     block_callback = (
         f"admin:req:unblock_user:{request_id}"
         if is_user_blocked
@@ -161,34 +165,34 @@ def admin_request_actions_keyboard(request_id: int, is_user_blocked: bool) -> In
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Approve",
+                    text="Согласовать",
                     callback_data=f"admin:req:approve:{request_id}",
                 ),
                 InlineKeyboardButton(
-                    text="Reject",
+                    text="Отклонить",
                     callback_data=f"admin:req:reject:{request_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    text="Offer alternative slot",
+                    text="Предложить другой слот",
                     callback_data=f"admin:req:alt_slot:{request_id}",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="Status history",
+                    text="История статусов",
                     callback_data=f"admin:req:history:{request_id}",
                 )
             ],
             [InlineKeyboardButton(text=block_action, callback_data=block_callback)],
             [
                 InlineKeyboardButton(
-                    text="Create meeting manually",
+                    text="Создать встречу вручную",
                     callback_data=f"admin:req:manual_create:{request_id}",
                 )
             ],
-            [InlineKeyboardButton(text="Back to admin menu", callback_data="admin:menu")],
+            [InlineKeyboardButton(text="Назад в админ-меню", callback_data="admin:menu")],
         ]
     )
 
@@ -198,39 +202,55 @@ def admin_settings_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Set working days",
+                    text="Рабочие дни",
                     callback_data="admin:set:working_days",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="Set working hours",
+                    text="Рабочие часы",
                     callback_data="admin:set:working_hours",
                 )
             ],
-            [InlineKeyboardButton(text="Set durations", callback_data="admin:set:durations")],
-            [InlineKeyboardButton(text="Set min notice", callback_data="admin:set:min_notice")],
-            [InlineKeyboardButton(text="Set buffer", callback_data="admin:set:buffer")],
-            [InlineKeyboardButton(text="Set daily limit", callback_data="admin:set:daily_limit")],
-            [InlineKeyboardButton(text="Set horizon", callback_data="admin:set:horizon")],
+            [InlineKeyboardButton(text="Длительности", callback_data="admin:set:durations")],
             [
                 InlineKeyboardButton(
-                    text="Add forbidden date",
+                    text="Мин. время до встречи",
+                    callback_data="admin:set:min_notice",
+                )
+            ],
+            [InlineKeyboardButton(text="Буфер", callback_data="admin:set:buffer")],
+            [
+                InlineKeyboardButton(
+                    text="Лимит встреч в день",
+                    callback_data="admin:set:daily_limit",
+                )
+            ],
+            [InlineKeyboardButton(text="Горизонт записи", callback_data="admin:set:horizon")],
+            [
+                InlineKeyboardButton(
+                    text="Добавить запрещенную дату",
                     callback_data="admin:set:forbidden_date",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="Add forbidden period",
+                    text="Добавить запрещенный период",
                     callback_data="admin:set:forbidden_period",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="Edit new request text",
+                    text="Текст уведомления о заявке",
                     callback_data="admin:set:new_request_text",
                 )
             ],
-            [InlineKeyboardButton(text="Back to admin menu", callback_data="admin:menu")],
+            [
+                InlineKeyboardButton(
+                    text="Подключить Google Calendar",
+                    callback_data="admin:google:connect",
+                )
+            ],
+            [InlineKeyboardButton(text="Назад в админ-меню", callback_data="admin:menu")],
         ]
     )

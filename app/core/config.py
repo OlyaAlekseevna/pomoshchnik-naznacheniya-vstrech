@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     telegram_drop_pending_updates_on_start: bool = False
     telegram_admin_id: int | None = None
 
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: SecretStr | None = None
+    google_oauth_redirect_uri: str = "urn:ietf:wg:oauth:2.0:oob"
+    google_calendar_id: str = "primary"
+    google_oauth_scopes: str = "https://www.googleapis.com/auth/calendar"
+
     postgres_host: str = "postgres"
     postgres_port: int = 5432
     postgres_db: str = "calendar_bot"
@@ -67,6 +73,9 @@ class Settings(BaseSettings):
             "telegram_polling_enabled": self.telegram_polling_enabled,
             "telegram_drop_pending_updates_on_start": self.telegram_drop_pending_updates_on_start,
             "telegram_admin_id_configured": self.telegram_admin_id is not None,
+            "google_oauth_client_id_configured": bool(self.google_oauth_client_id),
+            "google_oauth_client_secret_configured": bool(self.google_oauth_client_secret),
+            "google_calendar_id": self.google_calendar_id,
         }
 
 
