@@ -19,6 +19,7 @@
 
 1. Workflow: `.github/workflows/deploy-vps.yml`.
 2. Серверный скрипт деплоя: `scripts/deploy_vps.sh`.
+3. Ручной запуск через `workflow_dispatch` отключен: деплой возможен только при `push` в `main`.
 
 ## 3. Что нужно настроить вручную
 
@@ -74,8 +75,8 @@ ssh-keyscan -H 132.243.23.161
 
 ### Шаг 5. Проверить первый запуск
 
-1. Откройте вкладку `Actions` в GitHub.
-2. Запустите workflow `Deploy Bot to VPS` вручную (`Run workflow`) или сделайте тестовый push в `main`.
+1. Сделайте тестовый `push` в `main`.
+2. Откройте вкладку `Actions` в GitHub и дождитесь `success`.
 3. После `success` проверьте на сервере:
 
 ```bash
