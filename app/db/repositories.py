@@ -360,6 +360,24 @@ async def get_active_reservation_by_request_id(
     return (await session.execute(query)).scalars().first()
 
 
+async def count_active_requests_by_user_id(
+    session: AsyncSession,
+    user_id: int,
+) -> int:
+    query = select(func.count(ConsultationRequest.id)).where(
+        and_(
+            ConsultationRequest.user_id == user_id,
+            ConsultationRequest.status.in_(
+                [
+                    RequestStatus.PENDING_APPROVAL,
+                    RequestStatus.UPDATED_BY_USER,
+                ]
+            ),
+        )
+    )
+    return int((await session.execute(query)).scalar_one())
+
+
 async def list_requests_for_admin(
     session: AsyncSession,
     limit: int = 20,
@@ -394,6 +412,34 @@ async def get_user_by_id(
 ) -> User | None:
     query = select(User).where(User.id == user_id)
     return (await session.execute(query)).scalars().first()
+
+
+async def anonymize_user_personal_data(
+    session: AsyncSession,
+    user_id: int,
+) -> tuple[User, int]:
+    user = await get_user_by_id(session, user_id)
+    if user is None:
+        raise LookupError("User not found.")
+
+    user.username = None
+    user.first_name = None
+    user.last_name = None
+    user.data_deletion_requested_at = datetime.now(UTC)
+
+    requests = (
+        await session.execute(
+            select(ConsultationRequest).where(ConsultationRequest.user_id == user_id)
+        )
+    ).scalars().all()
+    for item in requests:
+        item.full_name = "Удалено пользователем"
+        item.phone = "Удалено"
+        item.email = f"deleted-user-{user.id}-{item.id}@example.invalid"
+        item.meeting_goal = "Удалено по запросу на удаление данных."
+
+    await session.flush()
+    return user, len(requests)
 
 
 async def set_user_blocked(

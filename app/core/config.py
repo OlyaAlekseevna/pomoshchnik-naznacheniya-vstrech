@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
     log_level: str = "INFO"
     app_skip_external_checks: bool = False
+    max_active_requests_per_user: int = 1
 
     telegram_bot_token: SecretStr | None = None
     telegram_invite_token: str | None = None
@@ -71,6 +72,7 @@ class Settings(BaseSettings):
             "app_port": self.app_port,
             "log_level": self.log_level,
             "app_skip_external_checks": self.app_skip_external_checks,
+            "max_active_requests_per_user": self.max_active_requests_per_user,
             "postgres_host": self.postgres_host,
             "postgres_port": self.postgres_port,
             "postgres_db": self.postgres_db,

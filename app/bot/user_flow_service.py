@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -9,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import RequestChangedByRole, RequestStatus, ReservationStatus
 from app.db.models import ConsultationRequest, ScheduleSettings, User
 from app.db.repositories import (
+    anonymize_user_personal_data,
     append_request_status_history,
+    count_active_requests_by_user_id,
     count_consultations_for_date,
     create_consultation_request,
     get_active_reservation_by_request_id,
@@ -29,6 +32,7 @@ from app.domain.scheduling import SlotRules, TimeInterval, calculate_free_slots
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 CONSULTATION_KIND = "consultation"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -251,3 +255,66 @@ def ensure_slot_still_available(
         if slot.start_at == selected_slot.start_at and slot.end_at == selected_slot.end_at:
             return
     raise BusinessRuleViolation("Selected slot is no longer available.")
+
+
+async def ensure_active_request_limit_not_exceeded(
+    session: AsyncSession,
+    user_id: int,
+    max_active_requests_per_user: int,
+) -> None:
+    if max_active_requests_per_user <= 0:
+        return
+    active_requests_count = await count_active_requests_by_user_id(session, user_id=user_id)
+    if active_requests_count >= max_active_requests_per_user:
+        logger.warning(
+            "Active requests limit reached for user.",
+            extra={
+                "event": "active_requests_limit_reached",
+                "user_id": user_id,
+                "active_requests_count": active_requests_count,
+                "max_active_requests_per_user": max_active_requests_per_user,
+            },
+        )
+        raise BusinessRuleViolation(
+            "У вас уже есть активная заявка. Дождитесь ее обработки или отмените ее в разделе "
+            "'Мои заявки'."
+        )
+
+
+async def request_and_anonymize_user_data(
+    session: AsyncSession,
+    user: User,
+    telegram_user_id: int,
+) -> dict[str, int]:
+    requests = await list_requests_by_user_id(session, user_id=user.id)
+    canceled_requests = 0
+    for request in requests:
+        if request.status in {
+            RequestStatus.DRAFT,
+            RequestStatus.PENDING_APPROVAL,
+            RequestStatus.UPDATED_BY_USER,
+        }:
+            request.status = RequestStatus.CANCELED_BY_USER
+            request.reservation_expires_at = None
+            active_reservation = await get_active_reservation_by_request_id(session, request.id)
+            if active_reservation is not None:
+                await release_slot_reservation(
+                    session=session,
+                    reservation=active_reservation,
+                    released_status=ReservationStatus.RELEASED,
+                )
+            await append_request_status_history(
+                session=session,
+                request_id=request.id,
+                status=RequestStatus.CANCELED_BY_USER,
+                changed_by_role=RequestChangedByRole.USER,
+                changed_by_telegram_id=telegram_user_id,
+                comment="request_canceled_due_to_data_deletion",
+            )
+            canceled_requests += 1
+
+    _, anonymized_requests = await anonymize_user_personal_data(session=session, user_id=user.id)
+    return {
+        "canceled_requests": canceled_requests,
+        "anonymized_requests": anonymized_requests,
+    }

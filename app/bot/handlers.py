@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.bot.keyboards import (
     BACK_TEXT,
     BOOK_TEXT,
+    DELETE_MY_DATA_TEXT,
     MY_REQUESTS_TEXT,
     admin_request_actions_keyboard,
     back_keyboard,
@@ -36,11 +37,13 @@ from app.bot.user_flow_service import (
     can_submit_with_consent,
     cancel_request_for_user,
     create_request_from_draft,
+    ensure_active_request_limit_not_exceeded,
     ensure_slot_still_available,
     get_schedule_settings_or_fail,
     get_user_requests,
     is_request_editable,
     is_valid_email,
+    request_and_anonymize_user_data,
     slot_rules_from_settings,
     update_request_goal_for_user,
 )
@@ -410,6 +413,20 @@ async def start_booking_flow(message: Message, state: FSMContext) -> None:
                 reply_markup=main_menu_keyboard(),
             )
             return
+        if user is not None:
+            try:
+                await ensure_active_request_limit_not_exceeded(
+                    session=session,
+                    user_id=user.id,
+                    max_active_requests_per_user=get_settings().max_active_requests_per_user,
+                )
+            except BusinessRuleViolation as error:
+                await _safe_answer(
+                    message,
+                    str(error),
+                    reply_markup=main_menu_keyboard(),
+                )
+                return
     logger.info(
         "User started booking flow.",
         extra=_with_event({"telegram_user_id": message.from_user.id}, "user_booking_started"),
@@ -690,6 +707,20 @@ async def on_submit_request(query: CallbackQuery, state: FSMContext) -> None:
                 reply_markup=main_menu_keyboard(),
             )
             return
+        try:
+            await ensure_active_request_limit_not_exceeded(
+                session=session,
+                user_id=user.id,
+                max_active_requests_per_user=get_settings().max_active_requests_per_user,
+            )
+        except BusinessRuleViolation as error:
+            await _safe_reply_callback(query, "Достигнут лимит активных заявок.")
+            await _safe_answer(
+                query.message,
+                str(error),
+                reply_markup=main_menu_keyboard(),
+            )
+            return
         settings = await get_schedule_settings_or_fail(session)
         rules = slot_rules_from_settings(settings)
         google_busy_intervals, google_unavailable = await _google_busy_intervals_for_date(
@@ -762,6 +793,56 @@ async def on_submit_request(query: CallbackQuery, state: FSMContext) -> None:
         request_id=request.id,
         user_telegram_id=query.from_user.id,
         is_user_blocked=user.is_blocked,
+    )
+
+
+@router.message(F.text == DELETE_MY_DATA_TEXT)
+async def request_my_data_deletion(message: Message, state: FSMContext) -> None:
+    if message.from_user is None:
+        return
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        user = await get_user_by_telegram_id(session, message.from_user.id)
+        if user is None:
+            await _safe_answer(
+                message,
+                "Ваши данные не найдены. Создайте заявку, если хотите начать работу с ботом.",
+                reply_markup=main_menu_keyboard(),
+            )
+            return
+        logger.info(
+            "User requested data deletion.",
+            extra=_with_event(
+                {"telegram_user_id": message.from_user.id, "user_id": user.id},
+                "user_data_deletion_requested",
+            ),
+        )
+        deletion_stats = await request_and_anonymize_user_data(
+            session=session,
+            user=user,
+            telegram_user_id=message.from_user.id,
+        )
+        await session.commit()
+    await state.clear()
+    logger.info(
+        "User data anonymized by request.",
+        extra=_with_event(
+            {
+                "telegram_user_id": message.from_user.id,
+                "canceled_requests": deletion_stats["canceled_requests"],
+                "anonymized_requests": deletion_stats["anonymized_requests"],
+            },
+            "user_data_anonymized",
+        ),
+    )
+    await _safe_answer(
+        message,
+        (
+            "Ваш запрос выполнен: персональные данные обезличены.\n"
+            f"Обезличено заявок: {deletion_stats['anonymized_requests']}.\n"
+            f"Отменено активных заявок: {deletion_stats['canceled_requests']}."
+        ),
+        reply_markup=main_menu_keyboard(),
     )
 
 

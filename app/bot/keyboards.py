@@ -16,6 +16,7 @@ DURATIONS_MINUTES = (15, 30, 45, 90)
 BACK_TEXT = "Назад"
 BOOK_TEXT = "Записаться на консультацию"
 MY_REQUESTS_TEXT = "Мои заявки"
+DELETE_MY_DATA_TEXT = "Удалить мои данные"
 CONSENT_TEXT = "Согласен(на)"
 SUBMIT_TEXT = "Отправить заявку"
 
@@ -35,6 +36,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=BOOK_TEXT)],
             [KeyboardButton(text=MY_REQUESTS_TEXT)],
+            [KeyboardButton(text=DELETE_MY_DATA_TEXT)],
         ],
         resize_keyboard=True,
     )
