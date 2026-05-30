@@ -31,6 +31,8 @@ docker compose up --build
 curl http://localhost:8000/health
 ```
 
+`/health` возвращает статус по `postgresql`, `redis` и `google_oauth`.
+
 ## Локальный запуск без Docker
 
 1. Создайте виртуальное окружение и установите зависимости:
@@ -74,4 +76,51 @@ alembic upgrade head
 
 ```powershell
 alembic downgrade -1
+```
+
+## Мониторинг и диагностика на VPS
+
+Сервер проекта: `132.243.23.161`.
+
+1. Подключение к серверу:
+
+```bash
+ssh <user>@132.243.23.161
+```
+
+2. Перейти в директорию проекта (где лежит `docker-compose.yml`):
+
+```bash
+cd /path/to/project
+```
+
+3. Проверить, что сервисы запущены:
+
+```bash
+docker compose ps
+```
+
+4. Проверить health backend:
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+5. Посмотреть последние логи приложения:
+
+```bash
+docker compose logs app --tail 200
+```
+
+6. Смотреть логи в реальном времени:
+
+```bash
+docker compose logs -f app
+```
+
+7. При проблемах с инфраструктурой:
+
+```bash
+docker compose logs postgres --tail 100
+docker compose logs redis --tail 100
 ```

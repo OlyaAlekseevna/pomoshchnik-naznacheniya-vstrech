@@ -17,3 +17,4 @@ def test_health_ok_when_external_checks_are_skipped(monkeypatch) -> None:
     assert payload["status"] == "ok"
     assert payload["checks"]["postgresql"] == "skipped"
     assert payload["checks"]["redis"] == "skipped"
+    assert payload["checks"]["google_oauth"] == "skipped"

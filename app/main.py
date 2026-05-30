@@ -7,16 +7,23 @@ from aiogram.exceptions import TelegramAPIError
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.bot.admin_handlers import configure_session_factory as configure_admin_session_factory
 from app.bot.dispatcher import create_bot, create_dispatcher
 from app.bot.handlers import configure_session_factory as configure_user_session_factory
 from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.db.repositories import get_google_oauth_credentials, upsert_google_oauth_credentials
 from app.db.session import create_session_factory
 from app.services.background_jobs import BackgroundJobsService
 from app.services.db import close_engine, create_engine, ping_database
+from app.services.google_calendar import (
+    GoogleAuthRequiredError,
+    GoogleCalendarService,
+    GoogleIntegrationError,
+    GooglePermissionDeniedError,
+)
 from app.services.redis_client import close_redis, create_redis_client, ping_redis
 
 logger = logging.getLogger(__name__)
@@ -69,6 +76,63 @@ async def _run_external_checks(
         raise
 
     return checks
+
+
+async def _run_google_oauth_check(
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> str:
+    if settings.app_skip_external_checks:
+        return "skipped"
+
+    google_service = GoogleCalendarService(settings)
+    if not google_service.is_oauth_configured():
+        logger.info(
+            "Google OAuth check skipped: credentials are not configured.",
+            extra={"event": "google_oauth_not_configured"},
+        )
+        return "not_configured"
+
+    async with session_factory() as session:
+        credentials = await get_google_oauth_credentials(session)
+        if credentials is None:
+            logger.warning(
+                "Google OAuth check: no credentials stored in database.",
+                extra={"event": "google_oauth_not_connected"},
+            )
+            return "not_connected"
+
+        try:
+            _, refreshed_tokens = await google_service.get_valid_access_token(credentials)
+        except GoogleAuthRequiredError:
+            logger.warning(
+                "Google OAuth check requires reauthorization.",
+                extra={"event": "google_oauth_reauthorization_required"},
+            )
+            return "reauthorization_required"
+        except (GooglePermissionDeniedError, GoogleIntegrationError):
+            logger.exception(
+                "Google OAuth health check failed.",
+                extra={"event": "google_oauth_check_error"},
+            )
+            return "error"
+
+        if refreshed_tokens is not None:
+            await upsert_google_oauth_credentials(
+                session=session,
+                refresh_token=credentials.refresh_token,
+                access_token=refreshed_tokens.access_token,
+                access_token_expires_at=refreshed_tokens.expires_at,
+                scope=refreshed_tokens.scope or credentials.scope,
+                token_type=refreshed_tokens.token_type or credentials.token_type,
+            )
+            await session.commit()
+
+        logger.info(
+            "Google OAuth health check passed.",
+            extra={"event": "google_oauth_check_ok"},
+        )
+        return "ok"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -136,6 +200,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         application.state.settings = app_settings
         application.state.engine = engine
+        application.state.session_factory = session_factory
         application.state.redis_client = redis_client
         application.state.dispatcher = dispatcher
         application.state.bot = bot
@@ -182,7 +247,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health")
     async def health() -> JSONResponse:
         logger.info("Health-check called.", extra={"event": "health_check_called"})
-        required_state = ("settings", "engine", "redis_client")
+        required_state = ("settings", "engine", "redis_client", "session_factory")
         if not all(hasattr(app.state, key) for key in required_state):
             logger.error(
                 "Application state is not initialized yet.",
@@ -199,6 +264,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         settings_from_state: Settings = app.state.settings
         engine: AsyncEngine = app.state.engine
+        session_factory: async_sessionmaker[AsyncSession] = app.state.session_factory
         redis_client: Redis = app.state.redis_client
 
         checks: dict[str, str]
@@ -211,6 +277,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "postgresql": "error" if "postgres" in str(error).lower() else "unknown",
                 "redis": "error" if "redis" in str(error).lower() else "unknown",
             }
+            status = "error"
+            status_code = 503
+
+        google_oauth_status = await _run_google_oauth_check(settings_from_state, session_factory)
+        checks["google_oauth"] = google_oauth_status
+        if google_oauth_status == "error":
             status = "error"
             status_code = 503
 

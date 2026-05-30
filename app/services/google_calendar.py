@@ -84,6 +84,10 @@ class GoogleCalendarService:
 
     async def exchange_authorization_code(self, code: str) -> GoogleOAuthTokens:
         self._ensure_client_credentials()
+        logger.info(
+            "Google OAuth code exchange started.",
+            extra={"event": "google_oauth_code_exchange_started"},
+        )
         payload = {
             "code": code,
             "client_id": self._settings.google_oauth_client_id or "",
@@ -100,6 +104,10 @@ class GoogleCalendarService:
 
     async def refresh_access_token(self, refresh_token: str) -> GoogleOAuthTokens:
         self._ensure_client_credentials()
+        logger.info(
+            "Google OAuth access token refresh started.",
+            extra={"event": "google_oauth_refresh_started"},
+        )
         payload = {
             "refresh_token": refresh_token,
             "client_id": self._settings.google_oauth_client_id or "",
@@ -110,6 +118,10 @@ class GoogleCalendarService:
         }
         response_json = await self._post_form(GOOGLE_OAUTH_TOKEN_URL, payload, is_refresh=True)
         tokens = self._parse_tokens(response_json)
+        logger.info(
+            "Google OAuth access token refresh completed.",
+            extra={"event": "google_oauth_refresh_completed"},
+        )
         return tokens
 
     async def get_valid_access_token(
@@ -127,11 +139,13 @@ class GoogleCalendarService:
             raise GoogleAuthRequiredError("Google OAuth is not connected yet.")
 
         now = datetime.now(UTC)
+        expires_at = credentials.access_token_expires_at
+        if expires_at is not None and expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
         has_fresh_access_token = (
             credentials.access_token
-            and credentials.access_token_expires_at
-            and credentials.access_token_expires_at
-            > now + timedelta(seconds=TOKEN_EXPIRY_SKEW_SECONDS)
+            and expires_at
+            and expires_at > now + timedelta(seconds=TOKEN_EXPIRY_SKEW_SECONDS)
         )
         if has_fresh_access_token:
             return credentials.access_token, None
@@ -244,10 +258,25 @@ class GoogleCalendarService:
         data: dict[str, str],
         is_refresh: bool = False,
     ) -> dict:
+        logger.info(
+            "Google OAuth API request started.",
+            extra={
+                "event": "google_api_request_started",
+                "api_name": "google_oauth_token",
+                "is_refresh": is_refresh,
+            },
+        )
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 response = await client.post(url, data=data)
         except httpx.HTTPError as error:
+            logger.exception(
+                "Google OAuth API request failed by transport error.",
+                extra={
+                    "event": "google_api_request_error",
+                    "api_name": "google_oauth_token",
+                },
+            )
             raise GoogleIntegrationError("Failed to reach Google OAuth endpoint.") from error
 
         if response.status_code in {400, 401} and is_refresh:
@@ -271,6 +300,14 @@ class GoogleCalendarService:
             raise GoogleIntegrationError("Google OAuth endpoint temporary unavailable.")
         if response.status_code >= 300:
             raise GoogleIntegrationError("Google OAuth request failed.")
+        logger.info(
+            "Google OAuth API request completed.",
+            extra={
+                "event": "google_api_request_completed",
+                "api_name": "google_oauth_token",
+                "status_code": response.status_code,
+            },
+        )
         return response.json()
 
     async def _post_json(
@@ -279,11 +316,24 @@ class GoogleCalendarService:
         payload: dict,
         access_token: str,
     ) -> dict:
+        api_name = (
+            "google_freebusy"
+            if url.endswith("/freeBusy")
+            else "google_calendar_event_create"
+        )
+        logger.info(
+            "Google Calendar API request started.",
+            extra={"event": "google_api_request_started", "api_name": api_name},
+        )
         headers = {"Authorization": f"Bearer {access_token}"}
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 response = await client.post(url, headers=headers, json=payload)
         except httpx.HTTPError as error:
+            logger.exception(
+                "Google Calendar API request failed by transport error.",
+                extra={"event": "google_api_request_error", "api_name": api_name},
+            )
             raise GoogleIntegrationError("Failed to reach Google Calendar API.") from error
 
         if response.status_code in {401, 400}:
@@ -307,6 +357,14 @@ class GoogleCalendarService:
             raise GoogleIntegrationError("Google Calendar API temporary unavailable.")
         if response.status_code >= 300:
             raise GoogleIntegrationError("Google Calendar API request failed.")
+        logger.info(
+            "Google Calendar API request completed.",
+            extra={
+                "event": "google_api_request_completed",
+                "api_name": api_name,
+                "status_code": response.status_code,
+            },
+        )
         return response.json()
 
     @staticmethod
