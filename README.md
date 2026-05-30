@@ -124,3 +124,57 @@ docker compose logs -f app
 docker compose logs postgres --tail 100
 docker compose logs redis --tail 100
 ```
+
+## Deploy на VPS (Этап 10)
+
+Сервер: `132.243.23.161`  
+Рабочая директория на сервере: `/opt/pomoshchnik-naznacheniya-vstrech`
+
+1. Клонировать/обновить проект:
+
+```bash
+cd /opt
+git clone https://github.com/OlyaAlekseevna/pomoshchnik-naznacheniya-vstrech.git
+cd pomoshchnik-naznacheniya-vstrech
+```
+
+2. Скопировать `.env` на сервер и убрать Windows-переносы:
+
+```bash
+sed -i '1s/^\xEF\xBB\xBF//' .env
+sed -i 's/\r$//' .env
+```
+
+3. Запустить сервисы:
+
+```bash
+docker compose up -d --build
+```
+
+4. Проверить сервисы и health:
+
+```bash
+docker compose ps
+curl http://127.0.0.1:8000/health
+```
+
+5. Проверить webhook-статус бота (для polling URL должен быть пустым):
+
+```bash
+docker compose exec -T app python - <<'PY'
+import os
+import httpx
+token = os.environ["TELEGRAM_BOT_TOKEN"]
+data = httpx.get(f"https://api.telegram.org/bot{token}/getWebhookInfo", timeout=15).json()
+print(data["result"]["url"], data["result"]["pending_update_count"])
+PY
+```
+
+6. Автозапуск после перезапуска Docker:
+
+```bash
+systemctl restart docker
+docker ps
+```
+
+Примечание: контейнер `app` автоматически выполняет `alembic upgrade head` при старте.
