@@ -79,6 +79,7 @@ miniapp_api_router = APIRouter(prefix="/api/miniapp", tags=["miniapp"])
 miniapp_web_router = APIRouter(tags=["miniapp"])
 
 MINIAPP_STATIC_DIR = Path(__file__).resolve().parent / "static"
+DEV_LOGIN_ALLOWED_ENVS = {"dev", "development", "local", "test"}
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,10 @@ async def _current_auth_context(
 def _ensure_admin(context: MiniAppAuthContext) -> None:
     if context.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+
+
+def _is_dev_login_allowed(settings: Settings) -> bool:
+    return settings.app_env.lower() in DEV_LOGIN_ALLOWED_ENVS
 
 
 async def _load_user(
@@ -253,6 +258,11 @@ async def miniapp_auth_dev(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dev login is disabled.",
+        )
+    if not _is_dev_login_allowed(settings):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dev login is allowed only in dev environment.",
         )
 
     session_factory = _session_factory(request)
