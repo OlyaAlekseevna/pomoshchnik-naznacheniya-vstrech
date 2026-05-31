@@ -63,6 +63,40 @@ ruff check .
 pytest
 ```
 
+## Mini App prototype (dev)
+
+Прототип Mini App подключается как дополнительный канал к существующему боту и не заменяет его.
+
+1. Убедитесь, что включены флаги в `.env`:
+
+```env
+MINIAPP_ENABLED=true
+MINIAPP_DEV_LOGIN_ENABLED=true
+```
+
+2. Запустите приложение (локально или через Docker Compose).
+
+3. Откройте прототип в браузере:
+
+```text
+http://localhost:8000/miniapp
+```
+
+4. Для входа в прототип используйте `dev login` по Telegram ID.
+
+Полезные маршруты:
+
+1. `GET /miniapp` — UI прототипа.
+2. `GET /api/miniapp/health` — health Mini App API.
+3. `POST /api/miniapp/auth/dev-login` — быстрый вход в dev.
+4. `GET /api/miniapp/notifications` — продуктовый блок уведомлений.
+5. `GET /api/miniapp/support` — продуктовый блок поддержки.
+
+Графика прототипа:
+
+1. Кастомные иконки: `app/miniapp/static/icons/*`.
+2. Иллюстрации ключевых экранов: `app/miniapp/static/illustrations/*`.
+
 ## Миграции базы данных
 
 Применить миграции:

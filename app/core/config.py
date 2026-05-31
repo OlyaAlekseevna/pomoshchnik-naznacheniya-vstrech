@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     google_calendar_id: str = "primary"
     google_oauth_scopes: str = "https://www.googleapis.com/auth/calendar"
 
+    miniapp_enabled: bool = True
+    miniapp_dev_login_enabled: bool = False
+    miniapp_session_ttl_minutes: int = 120
+    miniapp_auth_max_age_seconds: int = 3600
+
     postgres_host: str = "postgres"
     postgres_port: int = 5432
     postgres_db: str = "calendar_bot"
@@ -109,6 +114,10 @@ class Settings(BaseSettings):
             "google_oauth_client_id_configured": bool(self.google_oauth_client_id),
             "google_oauth_client_secret_configured": bool(self.google_oauth_client_secret),
             "google_calendar_id": self.google_calendar_id,
+            "miniapp_enabled": self.miniapp_enabled,
+            "miniapp_dev_login_enabled": self.miniapp_dev_login_enabled,
+            "miniapp_session_ttl_minutes": self.miniapp_session_ttl_minutes,
+            "miniapp_auth_max_age_seconds": self.miniapp_auth_max_age_seconds,
         }
 
 

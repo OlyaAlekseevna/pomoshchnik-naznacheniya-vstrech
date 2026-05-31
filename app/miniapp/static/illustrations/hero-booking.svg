@@ -1,0 +1,28 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 420" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#AFE8F0"/>
+      <stop offset="0.5" stop-color="#F9C8C6"/>
+      <stop offset="1" stop-color="#9CAEE8"/>
+    </linearGradient>
+  </defs>
+  <rect width="860" height="420" rx="40" fill="url(#bg)"/>
+  <circle cx="186" cy="112" r="52" fill="#FFF2D6" opacity="0.8"/>
+  <circle cx="704" cy="84" r="36" fill="#FCE5E5" opacity="0.8"/>
+  <rect x="96" y="148" width="340" height="214" rx="30" fill="#FDF4EF"/>
+  <rect x="424" y="112" width="340" height="250" rx="34" fill="#FEF8F3"/>
+  <circle cx="266" cy="258" r="74" fill="#E4F6F9"/>
+  <circle cx="266" cy="258" r="42" fill="#FFE6D5"/>
+  <path d="M246 256c8-15 28-15 36 0 8 15-6 32-18 40-12-8-26-25-18-40z" fill="#F273A8"/>
+  <rect x="470" y="156" width="248" height="28" rx="14" fill="#E5EAFB"/>
+  <rect x="470" y="200" width="194" height="22" rx="11" fill="#EEF2FF"/>
+  <rect x="470" y="236" width="228" height="22" rx="11" fill="#EEF2FF"/>
+  <rect x="470" y="272" width="152" height="22" rx="11" fill="#EEF2FF"/>
+  <circle cx="726" cy="330" r="38" fill="#5B6599"/>
+  <path d="M710 331h32" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M726 315v32" stroke="#fff" stroke-width="6" stroke-linecap="round"/>
+  <text x="124" y="188" fill="#4A3E57" font-family="Trebuchet MS" font-size="22" font-weight="700">Быстрая запись</text>
+  <text x="124" y="216" fill="#6B6F8B" font-family="Trebuchet MS" font-size="16">Выберите слот за 1 минуту</text>
+  <text x="452" y="136" fill="#4A3E57" font-family="Trebuchet MS" font-size="22" font-weight="700">Контроль заявок</text>
+  <text x="452" y="160" fill="#6B6F8B" font-family="Trebuchet MS" font-size="16">Всё под рукой в Mini App</text>
+</svg>

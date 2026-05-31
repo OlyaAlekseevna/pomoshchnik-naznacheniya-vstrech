@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini App • Календарь встреч</title>
+  <link rel="stylesheet" href="/miniapp/static/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero card">
+      <div class="hero-copy">
+        <p class="eyebrow">Прототип Mini App</p>
+        <h1>Календарь встреч в Telegram</h1>
+        <p class="muted">
+          Записывайтесь быстрее, следите за статусом заявок и управляйте встречами
+          в одном интерфейсе. Telegram-бот при этом работает параллельно.
+        </p>
+      </div>
+      <img
+        class="hero-illustration"
+        src="/miniapp/static/illustrations/hero-booking.svg"
+        alt="Иллюстрация с идеей быстрой записи и управления заявками"
+      >
+    </section>
+
+    <section class="auth-panel card">
+      <h2>Быстрый вход для dev-проверки</h2>
+      <p class="muted">Введите Telegram ID и нажмите «Войти».</p>
+      <div class="auth-grid">
+        <div>
+          <label for="telegramId">Telegram ID</label>
+          <input id="telegramId" type="number" placeholder="Например: 9001">
+        </div>
+        <button id="devLoginButton" class="btn primary">Войти в прототип</button>
+      </div>
+      <p id="authStatus" class="muted"></p>
+    </section>
+
+    <section class="content-grid">
+      <article class="card user-card">
+        <header class="card-header">
+          <h2>Пользовательский сценарий</h2>
+          <span id="userRoleBadge" class="role-badge">guest</span>
+        </header>
+        <p class="muted">
+          Ключевые блоки: запись, заявки, профиль, поддержка и уведомления.
+        </p>
+        <div class="action-grid">
+          <button class="action-card" data-action="booking-config">
+            <img src="/miniapp/static/icons/book.svg" alt="">
+            <span>Записаться</span>
+          </button>
+          <button class="action-card" data-action="my-requests">
+            <img src="/miniapp/static/icons/requests.svg" alt="">
+            <span>Мои заявки</span>
+          </button>
+          <button class="action-card" data-action="profile">
+            <img src="/miniapp/static/icons/profile.svg" alt="">
+            <span>Профиль</span>
+          </button>
+          <button class="action-card" data-action="support">
+            <img src="/miniapp/static/icons/support.svg" alt="">
+            <span>Поддержка</span>
+          </button>
+          <button class="action-card" data-action="notifications">
+            <img src="/miniapp/static/icons/notifications.svg" alt="">
+            <span>Уведомления</span>
+          </button>
+        </div>
+        <div class="controls">
+          <h3>Проверка слотов</h3>
+          <label for="weekOffset">Смещение недели</label>
+          <input id="weekOffset" type="number" value="0">
+          <button class="btn secondary" data-action="booking-week">Показать неделю</button>
+          <label for="meetingDate">Дата (YYYY-MM-DD)</label>
+          <input id="meetingDate" type="text" placeholder="2026-06-01">
+          <label for="duration">Длительность (мин)</label>
+          <input id="duration" type="number" value="30">
+          <button class="btn secondary" data-action="booking-slots">Найти свободные слоты</button>
+        </div>
+      </article>
+
+      <article class="card admin-card">
+        <header class="card-header">
+          <h2>Админ-панель (строгий режим)</h2>
+          <span class="role-badge strict">admin</span>
+        </header>
+        <p class="muted">
+          Полный перенос ключевых функций: заявки, настройки, Google OAuth.
+        </p>
+        <div class="action-grid">
+          <button class="action-card strict" data-action="admin-requests">
+            <img src="/miniapp/static/icons/admin-requests.svg" alt="">
+            <span>Заявки</span>
+          </button>
+          <button class="action-card strict" data-action="admin-settings">
+            <img src="/miniapp/static/icons/admin-settings.svg" alt="">
+            <span>Настройки</span>
+          </button>
+          <button class="action-card strict" data-action="admin-oauth-url">
+            <img src="/miniapp/static/icons/support.svg" alt="">
+            <span>Google OAuth</span>
+          </button>
+        </div>
+        <div class="controls">
+          <h3>Работа с заявкой</h3>
+          <label for="requestId">ID заявки</label>
+          <input id="requestId" type="number" placeholder="Введите ID заявки">
+          <button class="btn secondary strict" data-action="admin-approve">Согласовать</button>
+          <button class="btn secondary strict" data-action="admin-history">История статусов</button>
+        </div>
+      </article>
+    </section>
+
+    <section id="requestsEmptyState" class="card empty-state hidden">
+      <img src="/miniapp/static/illustrations/empty-requests.svg" alt="Иллюстрация пустого списка заявок">
+      <div>
+        <h2>Пока заявок нет</h2>
+        <p class="muted">Когда вы создадите первую заявку, она появится в разделе «Мои заявки».</p>
+      </div>
+    </section>
+
+    <section class="card output-card">
+      <header class="card-header">
+        <h2>Журнал действий прототипа</h2>
+        <button id="clearOutput" class="btn ghost">Очистить журнал</button>
+      </header>
+      <pre id="output"></pre>
+    </section>
+  </main>
+  <script src="/miniapp/static/app.js"></script>
+</body>
+</html>
