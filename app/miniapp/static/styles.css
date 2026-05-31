@@ -177,6 +177,31 @@ body {
   font-size: 1rem;
 }
 
+.setting-editor {
+  display: grid;
+  gap: 7px;
+}
+
+.setting-time-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.settings-week-days {
+  margin-top: 2px;
+}
+
+.setting-day-btn {
+  background: rgba(110, 126, 183, 0.16);
+}
+
+.setting-day-btn.active {
+  background: linear-gradient(130deg, var(--strict-1), var(--strict-2));
+  color: #fff;
+  border-color: transparent;
+}
+
 label {
   font-size: 0.92rem;
   font-weight: 700;
@@ -464,6 +489,10 @@ textarea {
   }
 
   .inline-row {
+    grid-template-columns: 1fr;
+  }
+
+  .setting-time-grid {
     grid-template-columns: 1fr;
   }
 

@@ -24,7 +24,14 @@ const requestIdInput = document.getElementById("requestId");
 const rejectReasonInput = document.getElementById("rejectReason");
 const alternativeSlotInput = document.getElementById("alternativeSlot");
 const settingKeyInput = document.getElementById("settingKey");
+const settingValueLabel = document.getElementById("settingValueLabel");
 const settingValueInput = document.getElementById("settingValue");
+const settingValueHint = document.getElementById("settingValueHint");
+const workingDaysCalendarEditor = document.getElementById("workingDaysCalendarEditor");
+const workingHoursEditor = document.getElementById("workingHoursEditor");
+const settingsWeekDaysContainer = document.getElementById("settingsWeekDays");
+const workdayStartTimeInput = document.getElementById("workdayStartTime");
+const workdayEndTimeInput = document.getElementById("workdayEndTime");
 const oauthCodeInput = document.getElementById("oauthCode");
 const adminRequestsList = document.getElementById("adminRequestsList");
 const adminStatus = document.getElementById("adminStatus");
@@ -35,6 +42,17 @@ let token = null;
 let currentRole = "guest";
 let bookingConfig = null;
 let bookingPageOffset = 0;
+let selectedWorkingDays = new Set();
+
+const adminWeekdayOptions = [
+  { value: "monday", label: "ПН", icon: "🌿" },
+  { value: "tuesday", label: "ВТ", icon: "💼" },
+  { value: "wednesday", label: "СР", icon: "📌" },
+  { value: "thursday", label: "ЧТ", icon: "🗓" },
+  { value: "friday", label: "ПТ", icon: "✨" },
+  { value: "saturday", label: "СБ", icon: "☕" },
+  { value: "sunday", label: "ВС", icon: "🌞" },
+];
 
 const write = (title, payload) => {
   output.textContent = [
@@ -137,6 +155,191 @@ const toIsoDate = (sourceDate) => {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const settingPlaceholders = {
+  working_days: "Выберите рабочие дни в календаре выше",
+  working_hours: "Выберите рабочие часы выше",
+  durations: "Пример: 15,30,45,90",
+  min_notice: "Пример: 120",
+  buffer: "Пример: 60",
+  daily_limit: "Пример: 3",
+  horizon: "Пример: 28",
+  forbidden_date: "Пример: 2026-06-10 | отпуск",
+  forbidden_period: "Пример: 2026-06-10 10:00 - 2026-06-10 15:00 | мероприятие",
+  new_request_text: "Пример: Новая заявка от пользователя",
+};
+
+const weekdayAliases = {
+  monday: "monday",
+  mon: "monday",
+  "понедельник": "monday",
+  "пн": "monday",
+  tuesday: "tuesday",
+  tue: "tuesday",
+  "вторник": "tuesday",
+  "вт": "tuesday",
+  wednesday: "wednesday",
+  wed: "wednesday",
+  "среда": "wednesday",
+  "ср": "wednesday",
+  thursday: "thursday",
+  thu: "thursday",
+  "четверг": "thursday",
+  "чт": "thursday",
+  friday: "friday",
+  fri: "friday",
+  "пятница": "friday",
+  "пт": "friday",
+  saturday: "saturday",
+  sat: "saturday",
+  "суббота": "saturday",
+  "сб": "saturday",
+  sunday: "sunday",
+  sun: "sunday",
+  "воскресенье": "sunday",
+  "вс": "sunday",
+};
+
+const startOfWeekMonday = (sourceDate) => {
+  const dayStart = startOfLocalDay(sourceDate);
+  const mondayIndex = (dayStart.getDay() + 6) % 7;
+  return addDays(dayStart, -mondayIndex);
+};
+
+const formatDayMonth = (sourceDate) =>
+  new Date(sourceDate).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+
+const sortWorkingDays = (days) => {
+  const daySet = new Set((Array.isArray(days) ? days : []).map((item) => String(item).toLowerCase()));
+  return adminWeekdayOptions
+    .map((item) => item.value)
+    .filter((value) => daySet.has(value));
+};
+
+const setWorkingDaysFromRawValue = (rawValue) => {
+  const items = String(rawValue || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  const normalized = items
+    .map((item) => weekdayAliases[item] || item)
+    .filter((item) => adminWeekdayOptions.some((day) => day.value === item));
+  selectedWorkingDays = new Set(sortWorkingDays(normalized));
+};
+
+const renderWorkingDaysCalendar = () => {
+  if (!settingsWeekDaysContainer) {
+    return;
+  }
+
+  const weekStart = startOfWeekMonday(new Date());
+  settingsWeekDaysContainer.innerHTML = "";
+
+  adminWeekdayOptions.forEach((dayMeta, index) => {
+    const date = addDays(weekStart, index);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "week-day-btn setting-day-btn";
+    button.innerHTML = `
+      <span class="week-day-icon">${dayMeta.icon}</span>
+      <span class="week-day-name">${dayMeta.label}</span>
+      <span class="week-day-date">${formatDayMonth(date)}</span>
+    `;
+    if (selectedWorkingDays.has(dayMeta.value)) {
+      button.classList.add("active");
+    }
+    button.addEventListener("click", () => {
+      if (selectedWorkingDays.has(dayMeta.value)) {
+        selectedWorkingDays.delete(dayMeta.value);
+      } else {
+        selectedWorkingDays.add(dayMeta.value);
+      }
+      renderWorkingDaysCalendar();
+      syncSettingValueFromStructuredEditors();
+    });
+    settingsWeekDaysContainer.append(button);
+  });
+};
+
+const syncSettingValueFromStructuredEditors = () => {
+  const key = String(settingKeyInput?.value || "").trim();
+  if (!key || !settingValueInput) {
+    return;
+  }
+
+  if (key === "working_days") {
+    const orderedDays = sortWorkingDays(Array.from(selectedWorkingDays));
+    settingValueInput.value = orderedDays.join(",");
+    return;
+  }
+
+  if (key === "working_hours") {
+    const start = String(workdayStartTimeInput?.value || "").trim();
+    const end = String(workdayEndTimeInput?.value || "").trim();
+    settingValueInput.value = start && end ? `${start}-${end}` : "";
+  }
+};
+
+const applySettingEditorMode = () => {
+  const key = String(settingKeyInput?.value || "").trim();
+  const isWorkingDays = key === "working_days";
+  const isWorkingHours = key === "working_hours";
+
+  workingDaysCalendarEditor?.classList.toggle("hidden", !isWorkingDays);
+  workingHoursEditor?.classList.toggle("hidden", !isWorkingHours);
+
+  if (settingValueLabel) {
+    settingValueLabel.textContent = isWorkingDays || isWorkingHours ? "Значение (автоматически)" : "Значение";
+  }
+
+  if (settingValueInput) {
+    settingValueInput.readOnly = isWorkingDays || isWorkingHours;
+    settingValueInput.placeholder = settingPlaceholders[key] || "Введите значение настройки";
+  }
+
+  if (settingValueHint) {
+    settingValueHint.classList.toggle("hidden", !(isWorkingDays || isWorkingHours));
+  }
+
+  if (isWorkingDays) {
+    if (selectedWorkingDays.size === 0) {
+      setWorkingDaysFromRawValue(settingValueInput.value);
+    }
+    renderWorkingDaysCalendar();
+  }
+
+  if (isWorkingHours) {
+    const currentValue = String(settingValueInput.value || "").trim();
+    const match = currentValue.match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+    if (match) {
+      workdayStartTimeInput.value = match[1];
+      workdayEndTimeInput.value = match[2];
+    }
+  }
+
+  syncSettingValueFromStructuredEditors();
+};
+
+const applyAdminSettingsSnapshot = (settingsPayload) => {
+  if (!settingsPayload || typeof settingsPayload !== "object") {
+    return;
+  }
+
+  const workingDays = sortWorkingDays(settingsPayload.working_days);
+  selectedWorkingDays = new Set(workingDays);
+
+  if (workdayStartTimeInput && typeof settingsPayload.workday_start === "string") {
+    workdayStartTimeInput.value = settingsPayload.workday_start;
+  }
+  if (workdayEndTimeInput && typeof settingsPayload.workday_end === "string") {
+    workdayEndTimeInput.value = settingsPayload.workday_end;
+  }
+
+  applySettingEditorMode();
 };
 
 const formatWeekDayMeta = (dateText) => {
@@ -739,6 +942,7 @@ const runAdminRequestAction = async (action, requestId) => {
 
 const updateAdminSettings = async () => {
   ensureAdminRole();
+  syncSettingValueFromStructuredEditors();
 
   const settingKey = String(settingKeyInput.value || "").trim();
   const value = String(settingValueInput.value || "").trim();
@@ -859,6 +1063,25 @@ durationInput.addEventListener("change", () => {
   setBookingStatus("Длительность обновлена. Нажмите «Найти свободные слоты».");
 });
 
+settingKeyInput?.addEventListener("change", () => {
+  applySettingEditorMode();
+
+  const key = String(settingKeyInput.value || "").trim();
+  if (key === "working_days") {
+    setAdminStatus("Выберите рабочие дни прямо в календаре ниже.", "info");
+  } else if (key === "working_hours") {
+    setAdminStatus("Выберите начало и окончание рабочего дня.", "info");
+  }
+});
+
+workdayStartTimeInput?.addEventListener("change", () => {
+  syncSettingValueFromStructuredEditors();
+});
+
+workdayEndTimeInput?.addEventListener("change", () => {
+  syncSettingValueFromStructuredEditors();
+});
+
 if (bookingNextButton) {
   bookingNextButton.addEventListener("click", () => {
     if (bookingNextButton.disabled) {
@@ -973,7 +1196,11 @@ document.querySelectorAll("[data-action]").forEach((button) => {
           break;
         case "admin-settings":
           ensureAdminRole();
-          write("Настройки расписания (admin)", await api("/admin/settings"));
+          {
+            const settingsData = await api("/admin/settings");
+            applyAdminSettingsSnapshot(settingsData);
+            write("Настройки расписания (admin)", settingsData);
+          }
           setAdminStatus("Текущие настройки загружены.", "success");
           break;
         case "admin-settings-update":
@@ -1022,3 +1249,5 @@ document.querySelectorAll("[data-action]").forEach((button) => {
     }
   });
 });
+
+applySettingEditorMode();

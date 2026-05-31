@@ -179,8 +179,30 @@
             <option value="forbidden_period">Запрещенный период</option>
             <option value="new_request_text">Текст уведомления о новой заявке</option>
           </select>
-          <label for="settingValue">Значение</label>
+
+          <div id="workingDaysCalendarEditor" class="setting-editor hidden">
+            <label>Календарь рабочих дней (неделя)</label>
+            <p class="muted">Отметьте дни недели, когда вы работаете.</p>
+            <div id="settingsWeekDays" class="week-days settings-week-days"></div>
+          </div>
+
+          <div id="workingHoursEditor" class="setting-editor hidden">
+            <label>Рабочие часы</label>
+            <div class="setting-time-grid">
+              <div>
+                <label for="workdayStartTime">Начало</label>
+                <input id="workdayStartTime" type="time" step="900">
+              </div>
+              <div>
+                <label for="workdayEndTime">Окончание</label>
+                <input id="workdayEndTime" type="time" step="900">
+              </div>
+            </div>
+          </div>
+
+          <label id="settingValueLabel" for="settingValue">Значение</label>
           <textarea id="settingValue" rows="3" placeholder="Пример: 09:00-18:00"></textarea>
+          <p id="settingValueHint" class="muted">Для ключей «Рабочие дни» и «Рабочие часы» значение формируется автоматически.</p>
           <div class="request-actions">
             <button class="btn secondary strict" data-action="admin-settings">Показать текущие настройки</button>
             <button class="btn subtle strict" data-action="admin-settings-update">Обновить настройку</button>
