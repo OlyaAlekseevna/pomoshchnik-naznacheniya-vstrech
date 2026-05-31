@@ -137,11 +137,64 @@
           </button>
         </div>
         <div class="controls">
-          <h3>Работа с заявкой</h3>
+          <h3>Шаг 1. Очередь заявок</h3>
+          <button class="btn secondary strict" data-action="admin-requests">Обновить очередь</button>
+          <div id="adminRequestsList" class="requests-list strict">
+            <p class="muted">После входа админа здесь появятся заявки.</p>
+          </div>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 2. Действия по заявке</h3>
           <label for="requestId">ID заявки</label>
           <input id="requestId" type="number" placeholder="Введите ID заявки">
-          <button class="btn secondary strict" data-action="admin-approve">Согласовать</button>
-          <button class="btn secondary strict" data-action="admin-history">История статусов</button>
+          <label for="rejectReason">Причина отклонения</label>
+          <textarea id="rejectReason" rows="2" placeholder="Например: занято это время"></textarea>
+          <label for="alternativeSlot">Альтернативный слот</label>
+          <input id="alternativeSlot" type="text" placeholder="2026-06-02 12:00-12:30">
+          <div class="request-actions">
+            <button class="btn secondary strict" data-action="admin-approve">Согласовать</button>
+            <button class="btn warn" data-action="admin-reject">Отклонить</button>
+            <button class="btn subtle strict" data-action="admin-alternative">Предложить слот</button>
+            <button class="btn subtle strict" data-action="admin-history">История статусов</button>
+            <button class="btn warn" data-action="admin-block">Блокировать</button>
+            <button class="btn subtle strict" data-action="admin-unblock">Разблокировать</button>
+            <button class="btn subtle strict" data-action="admin-manual-create">Ручное создание встречи</button>
+          </div>
+          <p id="adminStatus" class="muted status-line"></p>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 3. Настройки расписания</h3>
+          <label for="settingKey">Ключ настройки</label>
+          <select id="settingKey">
+            <option value="working_days">working_days</option>
+            <option value="working_hours">working_hours</option>
+            <option value="durations">durations</option>
+            <option value="min_notice">min_notice</option>
+            <option value="buffer">buffer</option>
+            <option value="daily_limit">daily_limit</option>
+            <option value="horizon">horizon</option>
+            <option value="forbidden_date">forbidden_date</option>
+            <option value="forbidden_period">forbidden_period</option>
+            <option value="new_request_text">new_request_text</option>
+          </select>
+          <label for="settingValue">Значение</label>
+          <textarea id="settingValue" rows="3" placeholder="Пример: 09:00-18:00"></textarea>
+          <div class="request-actions">
+            <button class="btn secondary strict" data-action="admin-settings">Показать текущие настройки</button>
+            <button class="btn subtle strict" data-action="admin-settings-update">Обновить настройку</button>
+          </div>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 4. Google OAuth</h3>
+          <label for="oauthCode">Код авторизации (или полный callback URL)</label>
+          <textarea id="oauthCode" rows="2" placeholder="Вставьте код или полный callback URL"></textarea>
+          <div class="request-actions">
+            <button class="btn secondary strict" data-action="admin-oauth-url">Показать инструкцию OAuth</button>
+            <button class="btn subtle strict" data-action="admin-oauth-exchange">Обменять код</button>
+          </div>
         </div>
       </article>
     </section>

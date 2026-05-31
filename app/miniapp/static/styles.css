@@ -263,6 +263,10 @@ textarea {
   color: #1f7b4f;
 }
 
+.status-line.strict {
+  color: var(--strict-1);
+}
+
 .week-days {
   display: flex;
   flex-wrap: wrap;
@@ -310,6 +314,10 @@ textarea {
   background: rgba(137, 158, 222, 0.1);
 }
 
+.requests-list.strict .request-item {
+  background: rgba(120, 136, 189, 0.12);
+}
+
 .request-item-head {
   display: flex;
   justify-content: space-between;
@@ -349,6 +357,10 @@ textarea {
 .btn.subtle {
   color: #fff;
   background: linear-gradient(130deg, #6071ab, #7d8ec8);
+}
+
+.btn.subtle.strict {
+  background: linear-gradient(130deg, var(--strict-1), var(--strict-2));
 }
 
 .btn.warn {

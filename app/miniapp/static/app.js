@@ -2,13 +2,14 @@
 const authStatus = document.getElementById("authStatus");
 const telegramIdInput = document.getElementById("telegramId");
 const roleBadge = document.getElementById("userRoleBadge");
-const requestIdInput = document.getElementById("requestId");
+
 const weekOffsetInput = document.getElementById("weekOffset");
 const meetingDateInput = document.getElementById("meetingDate");
 const durationInput = document.getElementById("duration");
 const slotSelect = document.getElementById("slotSelect");
 const weekDays = document.getElementById("weekDays");
 const bookingStatus = document.getElementById("bookingStatus");
+
 const fullNameInput = document.getElementById("fullName");
 const phoneInput = document.getElementById("phone");
 const emailInput = document.getElementById("email");
@@ -18,10 +19,19 @@ const createRequestButton = document.getElementById("createRequestButton");
 const requestsList = document.getElementById("requestsList");
 const requestsEmptyState = document.getElementById("requestsEmptyState");
 
+const requestIdInput = document.getElementById("requestId");
+const rejectReasonInput = document.getElementById("rejectReason");
+const alternativeSlotInput = document.getElementById("alternativeSlot");
+const settingKeyInput = document.getElementById("settingKey");
+const settingValueInput = document.getElementById("settingValue");
+const oauthCodeInput = document.getElementById("oauthCode");
+const adminRequestsList = document.getElementById("adminRequestsList");
+const adminStatus = document.getElementById("adminStatus");
+
 const editableStatuses = new Set(["pending_approval", "updated_by_user"]);
 
 let token = null;
-let latestSlots = [];
+let currentRole = "guest";
 
 const write = (title, payload) => {
   output.textContent = [
@@ -46,6 +56,13 @@ const ensureAuthorized = () => {
   }
 };
 
+const ensureAdminRole = () => {
+  ensureAuthorized();
+  if (currentRole !== "admin") {
+    throw new Error("Это действие доступно только администратору.");
+  }
+};
+
 const api = async (path, options = {}) => {
   const headers = {
     "Content-Type": "application/json",
@@ -67,18 +84,29 @@ const api = async (path, options = {}) => {
   return data;
 };
 
-const setBookingStatus = (message, kind = "info") => {
-  if (!bookingStatus) {
+const setStatus = (element, message, kind = "info", strict = false) => {
+  if (!element) {
     return;
   }
-  bookingStatus.className = "muted status-line";
+  element.className = "muted status-line";
   if (kind === "error") {
-    bookingStatus.classList.add("error");
+    element.classList.add("error");
   }
   if (kind === "success") {
-    bookingStatus.classList.add("success");
+    element.classList.add("success");
   }
-  bookingStatus.textContent = message;
+  if (strict) {
+    element.classList.add("strict");
+  }
+  element.textContent = message;
+};
+
+const setBookingStatus = (message, kind = "info") => {
+  setStatus(bookingStatus, message, kind, false);
+};
+
+const setAdminStatus = (message, kind = "info") => {
+  setStatus(adminStatus, message, kind, true);
 };
 
 const showEmptyRequestsState = (enabled) => {
@@ -101,16 +129,25 @@ const formatDateChip = (dateText) => {
 };
 
 const parseSlotLabel = (slotEncoded) => {
-  const [startRaw, endRaw] = slotEncoded.split("|", 2);
+  const [startRaw, endRaw] = String(slotEncoded).split("|", 2);
   const start = new Date(startRaw);
   const end = new Date(endRaw);
 
   const startText = Number.isNaN(start.getTime())
     ? String(startRaw).slice(11, 16)
-    : start.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false });
+    : start.toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+
   const endText = Number.isNaN(end.getTime())
     ? String(endRaw).slice(11, 16)
-    : end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", hour12: false });
+    : end.toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
 
   return `${startText}-${endText}`;
 };
@@ -155,6 +192,7 @@ const renderWeekDays = (days) => {
     button.type = "button";
     button.className = "week-day-btn";
     button.textContent = formatDateChip(dateText);
+
     if (meetingDateInput.value === dateText) {
       button.classList.add("active");
     }
@@ -172,9 +210,9 @@ const renderWeekDays = (days) => {
 const renderSlots = (slots, preserveSelection = true) => {
   const previousValue = preserveSelection ? slotSelect.value : "";
   slotSelect.innerHTML = "";
-  latestSlots = Array.isArray(slots) ? slots : [];
 
-  if (latestSlots.length === 0) {
+  const normalizedSlots = Array.isArray(slots) ? slots : [];
+  if (normalizedSlots.length === 0) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = "На выбранную дату свободных слотов нет";
@@ -187,7 +225,7 @@ const renderSlots = (slots, preserveSelection = true) => {
   placeholder.textContent = "Выберите слот";
   slotSelect.append(placeholder);
 
-  latestSlots.forEach((slotEncoded) => {
+  normalizedSlots.forEach((slotEncoded) => {
     const option = document.createElement("option");
     option.value = slotEncoded;
     option.textContent = parseSlotLabel(slotEncoded);
@@ -246,6 +284,85 @@ const renderRequests = (items) => {
   requestsList.innerHTML = markup;
 };
 
+const renderAdminRequests = (items) => {
+  if (!adminRequestsList) {
+    return;
+  }
+
+  if (!Array.isArray(items) || items.length === 0) {
+    adminRequestsList.innerHTML = '<p class="muted">Заявок для обработки нет.</p>';
+    return;
+  }
+
+  const markup = items
+    .map((item) => {
+      const requestId = Number(item.id);
+      const statusLabel = escapeHtml(item.status_label || item.status || "-");
+      const slotText = `${escapeHtml(item.meeting_date)} ${escapeHtml(item.start_time)}-${escapeHtml(
+        item.end_time
+      )}`;
+      const tgUser = item.user?.telegram_user_id ? `tg:${escapeHtml(item.user.telegram_user_id)}` : "tg:-";
+      const blocked = item.user?.is_blocked ? "заблокирован" : "активен";
+      const goalText = escapeHtml(item.meeting_goal || "");
+
+      return `
+        <article class="request-item">
+          <div class="request-item-head">
+            <span class="request-id">#${requestId}</span>
+            <span class="request-status">${statusLabel}</span>
+          </div>
+          <p class="request-meta">${slotText} • ${tgUser} • ${blocked}</p>
+          <p class="request-goal">Цель: ${goalText}</p>
+          <div class="request-actions">
+            <button class="btn subtle strict" data-admin-select="true" data-request-id="${requestId}">Выбрать</button>
+            <button class="btn secondary strict" data-admin-request-action="approve" data-request-id="${requestId}">Согласовать</button>
+            <button class="btn warn" data-admin-request-action="reject" data-request-id="${requestId}">Отклонить</button>
+            <button class="btn subtle strict" data-admin-request-action="history" data-request-id="${requestId}">История</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  adminRequestsList.innerHTML = markup;
+};
+
+const parseRequestId = () => {
+  const requestId = Number(requestIdInput.value || 0);
+  if (!requestId) {
+    throw new Error("Укажите корректный ID заявки.");
+  }
+  return requestId;
+};
+
+const extractOAuthCode = (rawValue) => {
+  const trimmed = String(rawValue || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsedUrl = new URL(trimmed);
+    const fromQuery = parsedUrl.searchParams.get("code");
+    if (fromQuery) {
+      return fromQuery;
+    }
+  } catch {
+    // not an URL, continue
+  }
+
+  const regexMatch = trimmed.match(/[?&]code=([^&#]+)/i);
+  if (regexMatch?.[1]) {
+    try {
+      return decodeURIComponent(regexMatch[1]);
+    } catch {
+      return regexMatch[1];
+    }
+  }
+
+  return trimmed;
+};
+
 const loadBookingConfig = async ({ logEvent = true } = {}) => {
   ensureAuthorized();
   const data = await api("/booking/config");
@@ -260,9 +377,11 @@ const loadBookingWeek = async ({ logEvent = true } = {}) => {
   ensureAuthorized();
   const weekOffset = Number(weekOffsetInput.value || 0);
   const data = await api(`/booking/week?week_offset=${weekOffset}`);
+
   if ((!meetingDateInput.value || !data.days.includes(meetingDateInput.value)) && data.days.length > 0) {
     meetingDateInput.value = data.days[0];
   }
+
   renderWeekDays(data.days);
   if (logEvent) {
     write("Доступные даты", data);
@@ -272,6 +391,7 @@ const loadBookingWeek = async ({ logEvent = true } = {}) => {
 
 const loadBookingSlots = async ({ logEvent = true, preserveSelection = true } = {}) => {
   ensureAuthorized();
+
   if (!meetingDateInput.value) {
     setBookingStatus("Сначала выберите дату.", "error");
     return null;
@@ -288,6 +408,7 @@ const loadBookingSlots = async ({ logEvent = true, preserveSelection = true } = 
       meetingDateInput.value
     )}&duration_minutes=${durationMinutes}`
   );
+
   renderSlots(data.slots, preserveSelection);
 
   if (!data.slots || data.slots.length === 0) {
@@ -314,6 +435,16 @@ const refreshRequests = async ({ logEvent = true } = {}) => {
   return data;
 };
 
+const loadAdminRequests = async ({ logEvent = true } = {}) => {
+  ensureAdminRole();
+  const data = await api("/admin/requests");
+  renderAdminRequests(data.items);
+  if (logEvent) {
+    write("Список заявок (admin)", data);
+  }
+  return data;
+};
+
 const initializeAfterLogin = async () => {
   try {
     await loadBookingConfig({ logEvent: false });
@@ -321,6 +452,13 @@ const initializeAfterLogin = async () => {
     await loadBookingSlots({ logEvent: false, preserveSelection: false });
     await refreshRequests({ logEvent: false });
     setBookingStatus("Данные загружены. Можно оформлять заявку.", "success");
+
+    if (currentRole === "admin") {
+      await loadAdminRequests({ logEvent: false });
+      setAdminStatus("Админ-очередь загружена.", "success");
+    } else {
+      setAdminStatus("Войдите как администратор для админ-действий.", "info");
+    }
   } catch (error) {
     setBookingStatus(error.message, "error");
     write("Ошибка инициализации после входа", { error: error.message });
@@ -365,6 +503,9 @@ const createRequest = async () => {
     setBookingStatus(`Заявка #${data.request.id} отправлена на согласование.`, "success");
     write("Заявка создана", data);
     await refreshRequests({ logEvent: false });
+    if (currentRole === "admin") {
+      await loadAdminRequests({ logEvent: false });
+    }
   } catch (error) {
     if (error.message.includes("Selected slot is no longer available.")) {
       setBookingStatus(
@@ -372,13 +513,144 @@ const createRequest = async () => {
         "error"
       );
       await loadBookingSlots({ logEvent: false, preserveSelection: false });
-      write("Слот устарел при отправке", { error: error.message, meeting_date: meetingDateInput.value });
+      write("Слот устарел при отправке", {
+        error: error.message,
+        meeting_date: meetingDateInput.value,
+      });
       return;
     }
 
     setBookingStatus(error.message, "error");
     write("Ошибка создания заявки", { error: error.message });
   }
+};
+
+const runAdminRequestAction = async (action, requestId) => {
+  ensureAdminRole();
+
+  const actionMap = {
+    approve: {
+      method: "POST",
+      path: `/admin/requests/${requestId}/approve`,
+      title: "Согласование заявки",
+      successText: `Заявка #${requestId} согласована.`,
+      refresh: true,
+    },
+    reject: {
+      method: "POST",
+      path: `/admin/requests/${requestId}/reject`,
+      body: { reason: (rejectReasonInput.value || "").trim() },
+      title: "Отклонение заявки",
+      successText: `Заявка #${requestId} отклонена.`,
+      refresh: true,
+    },
+    alternative: {
+      method: "POST",
+      path: `/admin/requests/${requestId}/alternative`,
+      body: { value: (alternativeSlotInput.value || "").trim() },
+      title: "Предложение альтернативного слота",
+      successText: `Для заявки #${requestId} предложен альтернативный слот.`,
+      refresh: true,
+    },
+    history: {
+      method: "GET",
+      path: `/admin/requests/${requestId}/history`,
+      title: "История статусов заявки",
+      successText: `История заявки #${requestId} загружена.`,
+      refresh: false,
+    },
+    block: {
+      method: "POST",
+      path: `/admin/requests/${requestId}/block`,
+      title: "Блокировка пользователя",
+      successText: `Пользователь по заявке #${requestId} заблокирован.`,
+      refresh: true,
+    },
+    unblock: {
+      method: "POST",
+      path: `/admin/requests/${requestId}/unblock`,
+      title: "Разблокировка пользователя",
+      successText: `Пользователь по заявке #${requestId} разблокирован.`,
+      refresh: true,
+    },
+    "manual-create": {
+      method: "POST",
+      path: `/admin/requests/${requestId}/manual-create`,
+      title: "Ручное создание встречи",
+      successText: `Для заявки #${requestId} выполнено ручное создание встречи.`,
+      refresh: true,
+    },
+  };
+
+  const config = actionMap[action];
+  if (!config) {
+    throw new Error(`Неизвестное админ-действие: ${action}`);
+  }
+
+  if (action === "reject" && !config.body.reason) {
+    throw new Error("Укажите причину отклонения.");
+  }
+  if (action === "alternative" && !config.body.value) {
+    throw new Error("Укажите альтернативный слот в формате YYYY-MM-DD HH:MM-HH:MM.");
+  }
+
+  const requestOptions = {
+    method: config.method,
+  };
+  if (config.body) {
+    requestOptions.body = JSON.stringify(config.body);
+  }
+
+  const data = await api(config.path, requestOptions);
+  write(config.title, data);
+  setAdminStatus(config.successText, "success");
+
+  if (config.refresh) {
+    await loadAdminRequests({ logEvent: false });
+  }
+
+  return data;
+};
+
+const updateAdminSettings = async () => {
+  ensureAdminRole();
+
+  const settingKey = String(settingKeyInput.value || "").trim();
+  const value = String(settingValueInput.value || "").trim();
+
+  if (!settingKey) {
+    throw new Error("Выберите ключ настройки.");
+  }
+  if (!value) {
+    throw new Error("Введите значение настройки.");
+  }
+
+  const data = await api("/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ setting_key: settingKey, value }),
+  });
+
+  write("Обновление настроек (admin)", data);
+  setAdminStatus("Настройка применена.", "success");
+  return data;
+};
+
+const runOAuthExchange = async () => {
+  ensureAdminRole();
+
+  const code = extractOAuthCode(oauthCodeInput.value);
+  if (!code) {
+    throw new Error("Вставьте код авторизации или полный callback URL.");
+  }
+
+  const data = await api("/admin/google/oauth/exchange", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+
+  write("Google OAuth exchange", data);
+  setAdminStatus("Код OAuth успешно обработан.", "success");
+  return data;
 };
 
 const requestActionHandlers = {
@@ -403,6 +675,7 @@ const requestActionHandlers = {
       method: "PATCH",
       body: JSON.stringify({ meeting_goal: nextGoal.trim() }),
     });
+
     write("Цель заявки обновлена", data);
     await refreshRequests({ logEvent: false });
     setBookingStatus(`Заявка #${requestId}: цель обновлена.`, "success");
@@ -416,6 +689,9 @@ const requestActionHandlers = {
     const data = await api(`/requests/${requestId}/cancel`, { method: "POST" });
     write("Заявка отменена", data);
     await refreshRequests({ logEvent: false });
+    if (currentRole === "admin") {
+      await loadAdminRequests({ logEvent: false });
+    }
     setBookingStatus(`Заявка #${requestId} отменена.`, "success");
   },
 };
@@ -434,9 +710,11 @@ document.getElementById("devLoginButton").addEventListener("click", async () => 
     });
 
     token = data.access_token;
+    currentRole = data.role;
     roleBadge.textContent = data.role;
     authStatus.textContent = `Вы вошли как ${data.role}. Telegram ID: ${data.telegram_user_id}.`;
     write("Авторизация", { auth: data });
+
     await initializeAfterLogin();
   } catch (error) {
     authStatus.textContent = error.message;
@@ -465,6 +743,7 @@ requestsList.addEventListener("click", async (event) => {
 
   try {
     ensureAuthorized();
+
     const requestId = Number(button.dataset.requestId || 0);
     if (!requestId) {
       throw new Error("Некорректный ID заявки.");
@@ -480,6 +759,39 @@ requestsList.addEventListener("click", async (event) => {
   } catch (error) {
     setBookingStatus(error.message, "error");
     write("Ошибка действия по заявке", { error: error.message });
+  }
+});
+
+adminRequestsList.addEventListener("click", async (event) => {
+  const selectButton = event.target.closest("button[data-admin-select='true']");
+  if (selectButton) {
+    const requestId = Number(selectButton.dataset.requestId || 0);
+    if (requestId) {
+      requestIdInput.value = String(requestId);
+      setAdminStatus(`Выбрана заявка #${requestId}.`, "success");
+    }
+    return;
+  }
+
+  const actionButton = event.target.closest("button[data-admin-request-action]");
+  if (!actionButton) {
+    return;
+  }
+
+  try {
+    const requestId = Number(actionButton.dataset.requestId || 0);
+    if (!requestId) {
+      throw new Error("Некорректный ID заявки.");
+    }
+
+    requestIdInput.value = String(requestId);
+    await runAdminRequestAction(actionButton.dataset.adminRequestAction, requestId);
+  } catch (error) {
+    setAdminStatus(error.message, "error");
+    write("Ошибка админ-действия из очереди", {
+      action: actionButton.dataset.adminRequestAction,
+      error: error.message,
+    });
   }
 });
 
@@ -514,32 +826,44 @@ document.querySelectorAll("[data-action]").forEach((button) => {
           write("Уведомления", await api("/notifications"));
           break;
         case "admin-requests":
-          ensureAuthorized();
-          write("Список заявок (admin)", await api("/admin/requests"));
+          await loadAdminRequests();
           break;
         case "admin-settings":
-          ensureAuthorized();
+          ensureAdminRole();
           write("Настройки расписания (admin)", await api("/admin/settings"));
+          setAdminStatus("Текущие настройки загружены.", "success");
+          break;
+        case "admin-settings-update":
+          await updateAdminSettings();
           break;
         case "admin-oauth-url":
-          ensureAuthorized();
+          ensureAdminRole();
           write("Google OAuth инструкция", await api("/admin/google/oauth/url"));
+          setAdminStatus("Инструкция OAuth загружена.", "success");
+          break;
+        case "admin-oauth-exchange":
+          await runOAuthExchange();
           break;
         case "admin-approve":
-          ensureAuthorized();
-          write(
-            "Согласование заявки",
-            await api(`/admin/requests/${Number(requestIdInput.value || 0)}/approve`, {
-              method: "POST",
-            })
-          );
+          await runAdminRequestAction("approve", parseRequestId());
+          break;
+        case "admin-reject":
+          await runAdminRequestAction("reject", parseRequestId());
+          break;
+        case "admin-alternative":
+          await runAdminRequestAction("alternative", parseRequestId());
           break;
         case "admin-history":
-          ensureAuthorized();
-          write(
-            "История статусов заявки",
-            await api(`/admin/requests/${Number(requestIdInput.value || 0)}/history`)
-          );
+          await runAdminRequestAction("history", parseRequestId());
+          break;
+        case "admin-block":
+          await runAdminRequestAction("block", parseRequestId());
+          break;
+        case "admin-unblock":
+          await runAdminRequestAction("unblock", parseRequestId());
+          break;
+        case "admin-manual-create":
+          await runAdminRequestAction("manual-create", parseRequestId());
           break;
         default:
           write("Неизвестное действие", { warning: `Неизвестное действие: ${action}` });
@@ -548,6 +872,9 @@ document.querySelectorAll("[data-action]").forEach((button) => {
       write("Ошибка действия", { action, error: error.message });
       if (action.startsWith("booking")) {
         setBookingStatus(error.message, "error");
+      }
+      if (action.startsWith("admin")) {
+        setAdminStatus(error.message, "error");
       }
     }
   });
