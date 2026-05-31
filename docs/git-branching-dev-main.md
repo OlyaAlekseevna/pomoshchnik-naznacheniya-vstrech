@@ -14,6 +14,7 @@
    - автопроверки (`ruff`, `pytest`);
    - smoke-проверка текущего Telegram-бота;
    - smoke-проверка Mini App (если он включен).
+6. Для Mini App merge использовать чеклист `docs/miniapp-dev-main-merge-checklist.md`.
 
 ## Деплой
 
