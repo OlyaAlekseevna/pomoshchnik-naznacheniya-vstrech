@@ -81,11 +81,18 @@
 
 ## Этап 5. Регрессии и стабилизация
 
-Статус: `todo`
+Статус: `in_progress`
 
 Цель:
 
 1. Подтвердить отсутствие регрессий текущего Telegram-бота и стабильность Mini App.
+
+Промежуточно уже проверено:
+
+1. Полный прогон проверок: `ruff` + `pytest` проходит (`56 passed`).
+2. Исправлена регрессия тестового контура polling (`set_wakeup_fd only works in main thread`) через `handle_signals=False` в запуске aiogram polling.
+3. Smoke Mini App API пройден: user/admin auth, booking config/week/slots, create/cancel request, admin requests/settings/OAuth URL.
+4. По логам выявлен инфраструктурный конфликт polling: `TelegramConflictError` из-за параллельного `getUpdates`-инстанса с тем же токеном.
 
 Критерий завершения:
 

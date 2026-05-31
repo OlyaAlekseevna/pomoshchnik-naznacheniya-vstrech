@@ -192,6 +192,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     dispatcher.start_polling(
                         bot,
                         allowed_updates=dispatcher.resolve_used_update_types(),
+                        handle_signals=False,
                     )
                 )
                 polling_task.add_done_callback(_log_polling_task_result)

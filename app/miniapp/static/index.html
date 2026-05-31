@@ -69,21 +69,21 @@
           </button>
         </div>
         <div class="controls">
-          <h3>Шаг 1. Выберите дату и слот</h3>
-          <label for="weekOffset">Смещение недели</label>
-          <div class="inline-row">
-            <input id="weekOffset" type="number" value="0">
-            <button class="btn secondary" data-action="booking-week">Показать неделю</button>
-          </div>
+          <h3>Шаг 1. Выберите день, длительность и слот</h3>
+          <p class="muted">Нажмите на день ближайшей недели, затем выберите длительность и найдите свободные слоты.</p>
           <div id="weekDays" class="week-days"></div>
-          <label for="meetingDate">Дата</label>
-          <input id="meetingDate" type="date">
+          <div class="week-nav">
+            <button id="bookingNextButton" class="btn ghost" type="button">Далее 7 дней</button>
+          </div>
+          <input id="meetingDate" type="hidden">
           <label for="duration">Длительность (мин)</label>
-          <select id="duration"></select>
-          <button class="btn secondary" data-action="booking-slots">Найти свободные слоты</button>
+          <select id="duration" disabled>
+            <option value="">Сначала выберите день</option>
+          </select>
+          <button id="bookingSlotsButton" class="btn secondary" data-action="booking-slots" disabled>Найти свободные слоты</button>
           <label for="slotSelect">Свободные слоты</label>
           <select id="slotSelect">
-            <option value="">Сначала выберите дату</option>
+            <option value="">Сначала выберите день недели</option>
           </select>
           <p id="bookingStatus" class="muted status-line"></p>
         </div>

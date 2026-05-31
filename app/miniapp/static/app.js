@@ -3,9 +3,10 @@ const authStatus = document.getElementById("authStatus");
 const telegramIdInput = document.getElementById("telegramId");
 const roleBadge = document.getElementById("userRoleBadge");
 
-const weekOffsetInput = document.getElementById("weekOffset");
 const meetingDateInput = document.getElementById("meetingDate");
 const durationInput = document.getElementById("duration");
+const bookingSlotsButton = document.getElementById("bookingSlotsButton");
+const bookingNextButton = document.getElementById("bookingNextButton");
 const slotSelect = document.getElementById("slotSelect");
 const weekDays = document.getElementById("weekDays");
 const bookingStatus = document.getElementById("bookingStatus");
@@ -32,6 +33,8 @@ const editableStatuses = new Set(["pending_approval", "updated_by_user"]);
 
 let token = null;
 let currentRole = "guest";
+let bookingConfig = null;
+let bookingPageOffset = 0;
 
 const write = (title, payload) => {
   output.textContent = [
@@ -116,16 +119,98 @@ const showEmptyRequestsState = (enabled) => {
   requestsEmptyState.classList.toggle("hidden", !enabled);
 };
 
-const formatDateChip = (dateText) => {
+const startOfLocalDay = (sourceDate) => {
+  const date = new Date(sourceDate);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const addDays = (sourceDate, days) => {
+  const date = new Date(sourceDate);
+  date.setDate(date.getDate() + days);
+  return date;
+};
+
+const toIsoDate = (sourceDate) => {
+  const date = new Date(sourceDate);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatWeekDayMeta = (dateText) => {
   const parsed = new Date(`${dateText}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) {
-    return dateText;
+    return {
+      icon: "•",
+      name: "ДЕНЬ",
+      date: dateText,
+    };
   }
-  return parsed.toLocaleDateString("ru-RU", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  });
+
+  const iconByDayIndex = {
+    1: "🌿",
+    2: "💼",
+    3: "📌",
+    4: "🗓",
+    5: "✨",
+    6: "☕",
+    0: "🌞",
+  };
+  const dayIndex = parsed.getDay();
+  return {
+    icon: iconByDayIndex[dayIndex] || "•",
+    name: parsed.toLocaleDateString("ru-RU", { weekday: "short" }).replace(".", "").toUpperCase(),
+    date: parsed.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" }),
+  };
+};
+
+const resetSlotSelection = (placeholder = "Сначала выберите день недели") => {
+  slotSelect.innerHTML = "";
+  const option = document.createElement("option");
+  option.value = "";
+  option.textContent = placeholder;
+  slotSelect.append(option);
+};
+
+const setBookingStepState = (hasDateSelected) => {
+  durationInput.disabled = !hasDateSelected;
+  if (bookingSlotsButton) {
+    bookingSlotsButton.disabled = !hasDateSelected;
+  }
+
+  if (!hasDateSelected) {
+    resetSlotSelection("Сначала выберите день недели");
+  }
+};
+
+const getMaxSelectableDate = () => {
+  const horizonDays = Number(bookingConfig?.booking_horizon_days ?? NaN);
+  if (!Number.isFinite(horizonDays)) {
+    return null;
+  }
+  return addDays(startOfLocalDay(new Date()), Math.max(0, horizonDays));
+};
+
+const buildDatePage = (pageOffset) => {
+  const startDate = addDays(startOfLocalDay(new Date()), pageOffset * 7);
+  const maxDate = getMaxSelectableDate();
+  const items = [];
+  for (let index = 0; index < 7; index += 1) {
+    const date = addDays(startDate, index);
+    const disabled = maxDate ? date > maxDate : false;
+    items.push({
+      iso: toIsoDate(date),
+      disabled,
+    });
+  }
+  const canGoNext = maxDate ? addDays(startDate, 7) <= maxDate : true;
+  return {
+    items,
+    canGoNext,
+    start: toIsoDate(startDate),
+  };
 };
 
 const parseSlotLabel = (slotEncoded) => {
@@ -177,34 +262,77 @@ const setDurationOptions = (durations) => {
   if (!durationInput.value) {
     durationInput.value = String(durations[0]);
   }
+
+  setBookingStepState(Boolean(meetingDateInput.value));
 };
 
-const renderWeekDays = (days) => {
+const renderWeekDays = (dateItems) => {
   weekDays.innerHTML = "";
 
-  if (!Array.isArray(days) || days.length === 0) {
-    weekDays.innerHTML = '<p class="muted">Нет доступных дат на выбранной неделе.</p>';
+  if (!Array.isArray(dateItems) || dateItems.length === 0) {
+    weekDays.innerHTML = '<p class="muted">Даты для записи не найдены.</p>';
+    meetingDateInput.value = "";
+    setBookingStepState(false);
     return;
   }
 
-  days.forEach((dateText) => {
+  dateItems.forEach((item) => {
+    const dayMeta = formatWeekDayMeta(item.iso);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "week-day-btn";
-    button.textContent = formatDateChip(dateText);
+    button.disabled = Boolean(item.disabled);
+    button.innerHTML = `
+      <span class="week-day-icon">${dayMeta.icon}</span>
+      <span class="week-day-name">${dayMeta.name}</span>
+      <span class="week-day-date">${dayMeta.date}</span>
+    `;
 
-    if (meetingDateInput.value === dateText) {
+    if (meetingDateInput.value === item.iso) {
       button.classList.add("active");
     }
 
-    button.addEventListener("click", async () => {
-      meetingDateInput.value = dateText;
-      renderWeekDays(days);
-      await loadBookingSlots({ logEvent: true, preserveSelection: false });
+    button.addEventListener("click", () => {
+      if (item.disabled) {
+        return;
+      }
+      meetingDateInput.value = item.iso;
+      renderBookingPage({ logEvent: false });
+      setBookingStepState(true);
+      resetSlotSelection("Нажмите «Найти свободные слоты»");
+      setBookingStatus(
+        `Выбран день ${dayMeta.name} ${dayMeta.date}. Теперь выберите длительность и найдите свободные слоты.`
+      );
     });
 
     weekDays.append(button);
   });
+};
+
+const renderBookingPage = ({ logEvent = true } = {}) => {
+  const page = buildDatePage(bookingPageOffset);
+
+  if (meetingDateInput.value) {
+    const existsOnPage = page.items.some((item) => item.iso === meetingDateInput.value);
+    if (!existsOnPage) {
+      meetingDateInput.value = "";
+      setBookingStepState(false);
+    }
+  }
+
+  renderWeekDays(page.items);
+  if (bookingNextButton) {
+    bookingNextButton.disabled = !page.canGoNext;
+  }
+
+  if (logEvent) {
+    write("Показаны дни для выбора", {
+      page_offset: bookingPageOffset,
+      page_start: page.start,
+      dates: page.items,
+      can_go_next: page.canGoNext,
+    });
+  }
 };
 
 const renderSlots = (slots, preserveSelection = true) => {
@@ -366,6 +494,7 @@ const extractOAuthCode = (rawValue) => {
 const loadBookingConfig = async ({ logEvent = true } = {}) => {
   ensureAuthorized();
   const data = await api("/booking/config");
+  bookingConfig = data;
   setDurationOptions(data.available_durations_minutes);
   if (logEvent) {
     write("Параметры записи", data);
@@ -375,14 +504,8 @@ const loadBookingConfig = async ({ logEvent = true } = {}) => {
 
 const loadBookingWeek = async ({ logEvent = true } = {}) => {
   ensureAuthorized();
-  const weekOffset = Number(weekOffsetInput.value || 0);
-  const data = await api(`/booking/week?week_offset=${weekOffset}`);
-
-  if ((!meetingDateInput.value || !data.days.includes(meetingDateInput.value)) && data.days.length > 0) {
-    meetingDateInput.value = data.days[0];
-  }
-
-  renderWeekDays(data.days);
+  const data = buildDatePage(bookingPageOffset);
+  renderBookingPage({ logEvent: false });
   if (logEvent) {
     write("Доступные даты", data);
   }
@@ -393,7 +516,7 @@ const loadBookingSlots = async ({ logEvent = true, preserveSelection = true } = 
   ensureAuthorized();
 
   if (!meetingDateInput.value) {
-    setBookingStatus("Сначала выберите дату.", "error");
+    setBookingStatus("Сначала выберите день ближайшей недели.", "error");
     return null;
   }
 
@@ -447,11 +570,13 @@ const loadAdminRequests = async ({ logEvent = true } = {}) => {
 
 const initializeAfterLogin = async () => {
   try {
+    bookingPageOffset = 0;
+    meetingDateInput.value = "";
+    setBookingStepState(false);
     await loadBookingConfig({ logEvent: false });
     await loadBookingWeek({ logEvent: false });
-    await loadBookingSlots({ logEvent: false, preserveSelection: false });
     await refreshRequests({ logEvent: false });
-    setBookingStatus("Данные загружены. Можно оформлять заявку.", "success");
+    setBookingStatus("Выберите день ближайшей недели, затем длительность и свободный слот.", "success");
 
     if (currentRole === "admin") {
       await loadAdminRequests({ logEvent: false });
@@ -726,6 +851,27 @@ document.getElementById("clearOutput").addEventListener("click", () => {
   output.textContent = "";
 });
 
+durationInput.addEventListener("change", () => {
+  if (!meetingDateInput.value) {
+    return;
+  }
+  resetSlotSelection("Нажмите «Найти свободные слоты»");
+  setBookingStatus("Длительность обновлена. Нажмите «Найти свободные слоты».");
+});
+
+if (bookingNextButton) {
+  bookingNextButton.addEventListener("click", () => {
+    if (bookingNextButton.disabled) {
+      return;
+    }
+    bookingPageOffset += 1;
+    meetingDateInput.value = "";
+    setBookingStepState(false);
+    renderBookingPage({ logEvent: true });
+    setBookingStatus("Показаны следующие 7 дней. Выберите день для поиска слотов.");
+  });
+}
+
 createRequestButton.addEventListener("click", async () => {
   try {
     await createRequest();
@@ -803,9 +949,6 @@ document.querySelectorAll("[data-action]").forEach((button) => {
       switch (action) {
         case "booking-config":
           await loadBookingConfig();
-          break;
-        case "booking-week":
-          await loadBookingWeek();
           break;
         case "booking-slots":
           await loadBookingSlots();

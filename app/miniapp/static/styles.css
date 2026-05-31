@@ -224,6 +224,12 @@ textarea {
   transform: translateY(-1px);
 }
 
+.btn:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .btn.primary {
   color: #fff;
   background: linear-gradient(130deg, var(--accent), var(--accent-2));
@@ -268,18 +274,23 @@ textarea {
 }
 
 .week-days {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .week-day-btn {
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 6px 10px;
+  border-radius: 12px;
+  padding: 6px 3px;
+  min-height: 62px;
+  display: grid;
+  place-items: center;
+  gap: 1px;
   background: rgba(133, 155, 220, 0.14);
   color: var(--text-main);
-  font-size: 0.86rem;
+  font-size: 0.74rem;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -287,6 +298,38 @@ textarea {
   background: linear-gradient(130deg, var(--accent), var(--accent-2));
   color: #fff;
   border-color: transparent;
+}
+
+.week-day-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.week-nav {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.week-day-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.68rem;
+}
+
+.week-day-name {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.week-day-date {
+  font-size: 0.82rem;
+  line-height: 1.05;
 }
 
 .checkbox-row {
@@ -422,5 +465,9 @@ textarea {
 
   .inline-row {
     grid-template-columns: 1fr;
+  }
+
+  .week-days {
+    gap: 4px;
   }
 }
