@@ -81,7 +81,7 @@
 
 ## Этап 5. Регрессии и стабилизация
 
-Статус: `in_progress`
+Статус: `done`
 
 Цель:
 
@@ -92,7 +92,8 @@
 1. Полный прогон проверок: `ruff` + `pytest` проходит (`56 passed`).
 2. Исправлена регрессия тестового контура polling (`set_wakeup_fd only works in main thread`) через `handle_signals=False` в запуске aiogram polling.
 3. Smoke Mini App API пройден: user/admin auth, booking config/week/slots, create/cancel request, admin requests/settings/OAuth URL.
-4. По логам выявлен инфраструктурный конфликт polling: `TelegramConflictError` из-за параллельного `getUpdates`-инстанса с тем же токеном.
+4. Для локального smoke зафиксирован безопасный режим без двойного polling: проверка Mini App выполняется с `TELEGRAM_POLLING_ENABLED=false`, а рабочий бот остается параллельным каналом на единственном активном polling-инстансе.
+5. Владелец проекта подтвердил ручную работоспособность ключевых пользовательских функций Mini App на текущем UI.
 
 Критерий завершения:
 
@@ -100,11 +101,16 @@
 
 ## Этап 6. Приемка в `dev`
 
-Статус: `todo`
+Статус: `in_progress`
 
 Цель:
 
 1. Финальная приемка Mini App MVP по чеклисту.
+
+Промежуточно уже проверено:
+
+1. Запущен финальный прогон checklist приемки по `docs/miniapp-mvp-tz.md`.
+2. Зафиксирован отчет приемки в `docs/miniapp-mvp-acceptance-dev.md`.
 
 Критерий завершения:
 
