@@ -20,10 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.db.enums import NotificationDeliveryStatus, RequestChangedByRole, RequestStatus
-from app.db.models import ConsultationRequest, TechnicalError
+from app.db.models import ConsultationRequest, GoogleOAuthCredential, TechnicalError
 from app.db.repositories import (
     append_request_status_history,
     create_technical_error,
+    get_google_oauth_credentials,
     get_or_create_notification_delivery,
     get_schedule_settings,
     list_approved_requests_with_users_in_date_range,
@@ -32,8 +33,15 @@ from app.db.repositories import (
     list_requests_for_admin_12h_reminder,
     mark_notification_delivery_retry,
     mark_notification_delivery_sent,
+    upsert_google_oauth_credentials,
 )
 from app.domain.lifecycle import mark_reservation_expired
+from app.services.google_calendar import (
+    GoogleAuthRequiredError,
+    GoogleCalendarService,
+    GoogleIntegrationError,
+    GooglePermissionDeniedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +50,7 @@ NOTIFICATION_USER_MEETING_2H = "user_meeting_2h"
 NOTIFICATION_ADMIN_MEETING_2H = "admin_meeting_2h"
 NOTIFICATION_TECHNICAL_ERROR = "technical_google_error"
 NOTIFICATION_TECHNICAL_AUTH_LOST = "technical_google_auth_lost"
+NOTIFICATION_TECHNICAL_OAUTH_EXPIRING = "technical_google_oauth_expiring"
 
 
 def _is_retryable_telegram_error(error: TelegramAPIError) -> tuple[bool, int | None]:
@@ -254,6 +263,10 @@ class BackgroundJobsService:
                         error=error,
                         now=now,
                     )
+                await self._monitor_google_oauth_token(
+                    session=session,
+                    now=now,
+                )
                 await session.commit()
         except Exception:
             logger.exception(
@@ -265,6 +278,98 @@ class BackgroundJobsService:
         logger.info(
             "Background task completed.",
             extra={"event": "background_task_completed", "job_name": job_name},
+        )
+
+    async def _monitor_google_oauth_token(
+        self,
+        session: AsyncSession,
+        now: datetime,
+    ) -> None:
+        google_service = GoogleCalendarService(self._settings)
+        if not google_service.is_oauth_configured():
+            return
+
+        credentials = await get_google_oauth_credentials(session)
+        if credentials is None:
+            return
+
+        await self._send_google_oauth_expiry_warning(
+            session=session,
+            credentials=credentials,
+            now=now,
+        )
+
+        try:
+            _, refreshed_tokens = await google_service.get_valid_access_token(credentials)
+        except (
+            GoogleAuthRequiredError,
+            GooglePermissionDeniedError,
+            GoogleIntegrationError,
+        ) as error:
+            technical_error = await create_technical_error(
+                session=session,
+                source="google_calendar",
+                error_code=error.__class__.__name__,
+                error_message=str(error),
+                details={"source": "background_oauth_monitor"},
+            )
+            await self._send_technical_error_notification(
+                session=session,
+                error=technical_error,
+                now=now,
+            )
+            return
+
+        if refreshed_tokens is not None:
+            await upsert_google_oauth_credentials(
+                session=session,
+                refresh_token=credentials.refresh_token,
+                access_token=refreshed_tokens.access_token,
+                access_token_expires_at=refreshed_tokens.expires_at,
+                scope=refreshed_tokens.scope or credentials.scope,
+                token_type=refreshed_tokens.token_type or credentials.token_type,
+            )
+
+    async def _send_google_oauth_expiry_warning(
+        self,
+        session: AsyncSession,
+        credentials: GoogleOAuthCredential,
+        now: datetime,
+    ) -> None:
+        if self._settings.telegram_admin_id is None:
+            return
+
+        warning_minutes = max(0, self._settings.background_google_oauth_expiry_warning_minutes)
+        if warning_minutes <= 0:
+            return
+
+        expires_at = _normalize_utc(credentials.access_token_expires_at)
+        if expires_at is None:
+            return
+
+        seconds_left = int((expires_at - now).total_seconds())
+        if seconds_left <= 0 or seconds_left > warning_minutes * 60:
+            return
+
+        minutes_left = max(1, seconds_left // 60)
+        dedupe_key = (
+            f"{NOTIFICATION_TECHNICAL_OAUTH_EXPIRING}:"
+            f"{credentials.id}:{expires_at.isoformat()}"
+        )
+        text = (
+            "Предупреждение: Google OAuth access token скоро истекает.\n"
+            f"Осталось примерно: {minutes_left} мин.\n"
+            "Бот попробует обновить токен автоматически, но если придет сообщение "
+            "о повторной авторизации — переподключите Google OAuth в админке."
+        )
+        await self._attempt_send_notification(
+            session=session,
+            dedupe_key=dedupe_key,
+            notification_type=NOTIFICATION_TECHNICAL_OAUTH_EXPIRING,
+            target_telegram_user_id=self._settings.telegram_admin_id,
+            text=text,
+            sent_event="technical_oauth_expiry_warning_sent",
+            scheduled_for=expires_at,
         )
 
     async def _send_admin_pending_12h_reminders(

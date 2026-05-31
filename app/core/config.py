@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     background_notification_retry_delay_seconds: int = 60
     background_notification_max_attempts: int = 3
     background_technical_errors_lookback_hours: int = 48
+    background_google_oauth_expiry_warning_minutes: int = 30
 
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: SecretStr | None = None
@@ -110,6 +111,9 @@ class Settings(BaseSettings):
             "background_notification_max_attempts": self.background_notification_max_attempts,
             "background_technical_errors_lookback_hours": (
                 self.background_technical_errors_lookback_hours
+            ),
+            "background_google_oauth_expiry_warning_minutes": (
+                self.background_google_oauth_expiry_warning_minutes
             ),
             "google_oauth_client_id_configured": bool(self.google_oauth_client_id),
             "google_oauth_client_secret_configured": bool(self.google_oauth_client_secret),
