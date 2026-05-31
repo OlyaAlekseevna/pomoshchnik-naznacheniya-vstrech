@@ -101,7 +101,7 @@
 
 ## Этап 6. Приемка в `dev`
 
-Статус: `in_progress`
+Статус: `done`
 
 Цель:
 
@@ -111,6 +111,8 @@
 
 1. Запущен финальный прогон checklist приемки по `docs/miniapp-mvp-tz.md`.
 2. Зафиксирован отчет приемки в `docs/miniapp-mvp-acceptance-dev.md`.
+3. Закрыты пункты checklist по доступности Mini App из Telegram/direct link и доступности админского Google OAuth сценария.
+4. Выполнен приемочный прогон `tests/test_miniapp_routes.py` + `tests/test_stage6_google_calendar.py` (`7 passed`) и API-smoke ключевых endpoints.
 
 Критерий завершения:
 
