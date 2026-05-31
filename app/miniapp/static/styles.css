@@ -191,8 +191,21 @@ input {
   color: var(--text-main);
 }
 
+select,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 10px 11px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text-main);
+  font: inherit;
+}
+
 @media (prefers-color-scheme: dark) {
-  input {
+  input,
+  select,
+  textarea {
     background: rgba(17, 22, 40, 0.9);
   }
 }
@@ -228,6 +241,119 @@ input {
 .btn.ghost {
   color: var(--accent-3);
   background: rgba(130, 150, 214, 0.18);
+}
+
+.inline-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.status-line {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.status-line.error {
+  color: #bf2d44;
+}
+
+.status-line.success {
+  color: #1f7b4f;
+}
+
+.week-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.week-day-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(133, 155, 220, 0.14);
+  color: var(--text-main);
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.week-day-btn.active {
+  background: linear-gradient(130deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border-color: transparent;
+}
+
+.checkbox-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.checkbox-row input {
+  width: auto;
+  margin-top: 2px;
+}
+
+.requests-list {
+  display: grid;
+  gap: 10px;
+}
+
+.request-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(137, 158, 222, 0.1);
+}
+
+.request-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.request-id {
+  font-weight: 700;
+}
+
+.request-status {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(99, 121, 192, 0.18);
+}
+
+.request-meta {
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+
+.request-goal {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+}
+
+.request-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn.subtle {
+  color: #fff;
+  background: linear-gradient(130deg, #6071ab, #7d8ec8);
+}
+
+.btn.warn {
+  color: #fff;
+  background: linear-gradient(130deg, #d96262, #c94545);
 }
 
 .empty-state {
@@ -279,6 +405,10 @@ input {
   }
 
   .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-row {
     grid-template-columns: 1fr;
   }
 }

@@ -69,15 +69,48 @@
           </button>
         </div>
         <div class="controls">
-          <h3>Проверка слотов</h3>
+          <h3>Шаг 1. Выберите дату и слот</h3>
           <label for="weekOffset">Смещение недели</label>
-          <input id="weekOffset" type="number" value="0">
-          <button class="btn secondary" data-action="booking-week">Показать неделю</button>
-          <label for="meetingDate">Дата (YYYY-MM-DD)</label>
-          <input id="meetingDate" type="text" placeholder="2026-06-01">
+          <div class="inline-row">
+            <input id="weekOffset" type="number" value="0">
+            <button class="btn secondary" data-action="booking-week">Показать неделю</button>
+          </div>
+          <div id="weekDays" class="week-days"></div>
+          <label for="meetingDate">Дата</label>
+          <input id="meetingDate" type="date">
           <label for="duration">Длительность (мин)</label>
-          <input id="duration" type="number" value="30">
+          <select id="duration"></select>
           <button class="btn secondary" data-action="booking-slots">Найти свободные слоты</button>
+          <label for="slotSelect">Свободные слоты</label>
+          <select id="slotSelect">
+            <option value="">Сначала выберите дату</option>
+          </select>
+          <p id="bookingStatus" class="muted status-line"></p>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 2. Заполните данные заявки</h3>
+          <label for="fullName">ФИО</label>
+          <input id="fullName" type="text" placeholder="Иванова Анна Сергеевна">
+          <label for="phone">Телефон</label>
+          <input id="phone" type="text" placeholder="+7 999 123-45-67">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="anna@example.com">
+          <label for="meetingGoal">Цель встречи</label>
+          <textarea id="meetingGoal" rows="4" placeholder="Коротко опишите, что хотите обсудить"></textarea>
+          <label class="checkbox-row">
+            <input id="personalConsent" type="checkbox">
+            <span>Подтверждаю согласие на обработку персональных данных</span>
+          </label>
+          <button id="createRequestButton" class="btn primary">Отправить заявку на согласование</button>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 3. Мои заявки</h3>
+          <button class="btn ghost" data-action="my-requests">Обновить список заявок</button>
+          <div id="requestsList" class="requests-list">
+            <p class="muted">После авторизации здесь появятся ваши заявки.</p>
+          </div>
         </div>
       </article>
 
