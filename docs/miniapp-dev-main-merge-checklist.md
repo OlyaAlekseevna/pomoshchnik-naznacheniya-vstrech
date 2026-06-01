@@ -23,7 +23,7 @@
 - [x] 6. Прогнать smoke Mini App (`GET /miniapp`, auth, `Записаться`, `Мои заявки`, admin-блок).
 - [x] 7. Проверить feature flags для prod: `MINIAPP_DEV_LOGIN_ENABLED=false` (обязательно) и `MINIAPP_ENABLED` по выбранной стратегии релиза (см. раздел 4).
 - [x] 8. Проверить, что миграции актуальны и в `alembic` нет незакоммиченных изменений.
-- [ ] 9. Открыть PR `dev -> main` с кратким отчетом по проверкам.
+- [x] 9. Открыть PR `dev -> main` с кратким отчетом по проверкам.
 - [ ] 10. После merge проверить GitHub Actions deploy и `/health` на VPS.
 
 ## 4. Стратегия включения Mini App в `main`
@@ -44,6 +44,7 @@
 
 - Выбрано: **Вариант A** (`MINIAPP_ENABLED=false` в `main`, мягкий запуск).
 - Обязательное правило для prod: `MINIAPP_DEV_LOGIN_ENABLED=false`.
+- PR открыт: `https://github.com/OlyaAlekseevna/pomoshchnik-naznacheniya-vstrech/pull/1` (Draft).
 
 ## 5. Post-merge контроль (обязательный)
 
