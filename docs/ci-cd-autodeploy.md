@@ -71,6 +71,7 @@ ssh-keyscan -H 132.243.23.161
 4. `VPS_PROJECT_PATH` = `/opt/pomoshchnik-naznacheniya-vstrech`
 5. `VPS_SSH_PRIVATE_KEY` = содержимое файла `github_actions_deploy_key`
 6. `VPS_KNOWN_HOSTS` = вывод `ssh-keyscan -H 132.243.23.161`
+7. (опционально) `VPS_COMPOSE_FILES` = `docker-compose.yml:docker-compose.public.yml` для запуска HTTPS-контура Mini App на том же VPS.
 
 ### Шаг 5. Проверить первый запуск
 

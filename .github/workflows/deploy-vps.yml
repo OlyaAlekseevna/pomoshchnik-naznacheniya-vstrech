@@ -21,6 +21,7 @@ jobs:
       VPS_PORT: ${{ secrets.VPS_PORT }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_PROJECT_PATH: ${{ secrets.VPS_PROJECT_PATH }}
+      VPS_COMPOSE_FILES: ${{ secrets.VPS_COMPOSE_FILES }}
       VPS_SSH_PRIVATE_KEY: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
       VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
     steps:
@@ -72,5 +73,5 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -p "$VPS_PORT" \
             "$VPS_USER@$VPS_HOST" \
-            "PROJECT_PATH='$VPS_PROJECT_PATH' DEPLOY_BRANCH='${GITHUB_REF_NAME}' DEPLOY_SHA='${GITHUB_SHA}' HEALTHCHECK_URL='http://127.0.0.1:8000/health' bash -s" \
+            "PROJECT_PATH='$VPS_PROJECT_PATH' DEPLOY_BRANCH='${GITHUB_REF_NAME}' DEPLOY_SHA='${GITHUB_SHA}' COMPOSE_FILES='${VPS_COMPOSE_FILES:-docker-compose.yml}' HEALTHCHECK_URL='http://127.0.0.1:8000/health' bash -s" \
             < scripts/deploy_vps.sh

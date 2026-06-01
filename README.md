@@ -92,6 +92,19 @@ http://localhost:8000/miniapp
 4. `GET /api/miniapp/notifications` — продуктовый блок уведомлений.
 5. `GET /api/miniapp/support` — продуктовый блок поддержки.
 
+### Mini App на том же VPS (prod)
+
+Для публикации Mini App на том же сервере, где работает бот, добавлен отдельный HTTPS-контур (Caddy + Let's Encrypt):
+
+1. `docker-compose.public.yml`
+2. `docker/caddy/Caddyfile`
+3. инструкция: `docs/miniapp-domain-vps.md`
+
+Коротко:
+1. привязать домен к `132.243.23.161`;
+2. выставить `MINIAPP_DOMAIN` и `MINIAPP_ENABLED=true` на VPS;
+3. запустить deploy с `COMPOSE_FILES=docker-compose.yml:docker-compose.public.yml`.
+
 Графика прототипа:
 
 1. Кастомные иконки: `app/miniapp/static/icons/*`.

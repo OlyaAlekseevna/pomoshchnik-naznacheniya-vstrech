@@ -4,6 +4,7 @@ set -euo pipefail
 PROJECT_PATH="${PROJECT_PATH:-/opt/pomoshchnik-naznacheniya-vstrech}"
 DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 DEPLOY_SHA="${DEPLOY_SHA:-}"
+COMPOSE_FILES="${COMPOSE_FILES:-docker-compose.yml}"
 HEALTHCHECK_URL="${HEALTHCHECK_URL:-http://127.0.0.1:8000/health}"
 HEALTHCHECK_TIMEOUT_SECONDS="${HEALTHCHECK_TIMEOUT_SECONDS:-120}"
 
@@ -52,6 +53,21 @@ fi
 
 cd "$PROJECT_PATH"
 
+compose_cmd=(docker compose)
+IFS=':' read -r -a compose_files <<< "$COMPOSE_FILES"
+if [ "${#compose_files[@]}" -eq 0 ]; then
+  echo "ERROR: COMPOSE_FILES is empty" >&2
+  exit 1
+fi
+for compose_file in "${compose_files[@]}"; do
+  if [ ! -f "$compose_file" ]; then
+    echo "ERROR: compose file does not exist: $compose_file" >&2
+    exit 1
+  fi
+  compose_cmd+=(-f "$compose_file")
+done
+log "Using compose files: $COMPOSE_FILES"
+
 if [ ! -d ".git" ]; then
   echo "ERROR: project path is not a git repository: $PROJECT_PATH" >&2
   exit 1
@@ -73,15 +89,15 @@ if [ -n "$DEPLOY_SHA" ] && [ "$after_commit" != "$DEPLOY_SHA" ]; then
 fi
 
 log "Building and starting containers"
-docker compose up -d --build --remove-orphans
+"${compose_cmd[@]}" up -d --build --remove-orphans
 
 log "Container status:"
-docker compose ps
+"${compose_cmd[@]}" ps
 
 log "Waiting for app health check: $HEALTHCHECK_URL"
 if ! wait_for_health; then
   echo "ERROR: health check failed within ${HEALTHCHECK_TIMEOUT_SECONDS}s" >&2
-  docker compose logs app --tail 200 || true
+  "${compose_cmd[@]}" logs app --tail 200 || true
   exit 1
 fi
 
