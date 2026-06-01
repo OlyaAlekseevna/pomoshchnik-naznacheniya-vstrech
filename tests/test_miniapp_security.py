@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from aiogram import Dispatcher
 from fastapi.testclient import TestClient
@@ -17,6 +17,21 @@ def _create_test_client(settings: Settings):
             app = create_app(settings)
             with TestClient(app) as client:
                 yield client
+
+
+class _DummySession:
+    async def __aenter__(self) -> "_DummySession":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    async def commit(self) -> None:
+        return None
+
+
+def _dummy_session_factory() -> _DummySession:
+    return _DummySession()
 
 
 def test_protected_route_requires_valid_bearer_token() -> None:
@@ -114,3 +129,54 @@ def test_dev_login_is_blocked_outside_dev_environment() -> None:
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Dev login is allowed only in dev environment."
+
+
+def test_dev_login_returns_admin_role_when_telegram_id_matches_admin_setting() -> None:
+    admin_telegram_id = 9007199254740993
+    settings = Settings(
+        app_skip_external_checks=True,
+        miniapp_enabled=True,
+        miniapp_dev_login_enabled=True,
+        telegram_polling_enabled=False,
+        telegram_admin_id=admin_telegram_id,
+    )
+    with _create_test_client(settings) as client:
+        client.app.state.session_factory = _dummy_session_factory
+        with patch(
+            "app.miniapp.router.get_or_create_user_by_telegram_id",
+            new=AsyncMock(return_value=None),
+        ):
+            response = client.post(
+                "/api/miniapp/auth/dev-login",
+                json={"telegram_user_id": str(admin_telegram_id)},
+            )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["telegram_user_id"] == admin_telegram_id
+    assert payload["role"] == "admin"
+
+
+def test_dev_login_returns_user_role_when_telegram_id_differs_from_admin_setting() -> None:
+    settings = Settings(
+        app_skip_external_checks=True,
+        miniapp_enabled=True,
+        miniapp_dev_login_enabled=True,
+        telegram_polling_enabled=False,
+        telegram_admin_id=7001,
+    )
+    with _create_test_client(settings) as client:
+        client.app.state.session_factory = _dummy_session_factory
+        with patch(
+            "app.miniapp.router.get_or_create_user_by_telegram_id",
+            new=AsyncMock(return_value=None),
+        ):
+            response = client.post(
+                "/api/miniapp/auth/dev-login",
+                json={"telegram_user_id": "7002"},
+            )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["telegram_user_id"] == 7002
+    assert payload["role"] == "user"

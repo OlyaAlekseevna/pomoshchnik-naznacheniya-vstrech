@@ -33,6 +33,7 @@ const settingsWeekDaysContainer = document.getElementById("settingsWeekDays");
 const workdayStartTimeInput = document.getElementById("workdayStartTime");
 const workdayEndTimeInput = document.getElementById("workdayEndTime");
 const oauthCodeInput = document.getElementById("oauthCode");
+const oauthInstructions = document.getElementById("oauthInstructions");
 const adminRequestsList = document.getElementById("adminRequestsList");
 const adminStatus = document.getElementById("adminStatus");
 
@@ -84,6 +85,17 @@ const ensureAdminRole = () => {
   }
 };
 
+const parseTelegramUserIdInput = (rawValue) => {
+  const value = String(rawValue || "").trim();
+  if (!value) {
+    throw new Error("Введите Telegram ID.");
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new Error("Telegram ID должен содержать только цифры.");
+  }
+  return value;
+};
+
 const api = async (path, options = {}) => {
   const headers = {
     "Content-Type": "application/json",
@@ -128,6 +140,13 @@ const setBookingStatus = (message, kind = "info") => {
 
 const setAdminStatus = (message, kind = "info") => {
   setStatus(adminStatus, message, kind, true);
+};
+
+const setOAuthInstructions = (text) => {
+  if (!oauthInstructions) {
+    return;
+  }
+  oauthInstructions.textContent = String(text || "").trim() || "Инструкция пока не загружена.";
 };
 
 const showEmptyRequestsState = (enabled) => {
@@ -771,6 +790,17 @@ const loadAdminRequests = async ({ logEvent = true } = {}) => {
   return data;
 };
 
+const loadOAuthInstructions = async ({ logEvent = true } = {}) => {
+  ensureAdminRole();
+  const data = await api("/admin/google/oauth/url");
+  const instructions = String(data.instructions || "").trim();
+  setOAuthInstructions(instructions);
+  if (logEvent) {
+    write("Google OAuth инструкция", data);
+  }
+  return data;
+};
+
 const initializeAfterLogin = async () => {
   try {
     bookingPageOffset = 0;
@@ -783,7 +813,8 @@ const initializeAfterLogin = async () => {
 
     if (currentRole === "admin") {
       await loadAdminRequests({ logEvent: false });
-      setAdminStatus("Админ-очередь загружена.", "success");
+      await loadOAuthInstructions({ logEvent: false });
+      setAdminStatus("Админ-очередь и OAuth-инструкция загружены.", "success");
     } else {
       setAdminStatus("Войдите как администратор для админ-действий.", "info");
     }
@@ -971,15 +1002,26 @@ const runOAuthExchange = async () => {
   if (!code) {
     throw new Error("Вставьте код авторизации или полный callback URL.");
   }
-
-  const data = await api("/admin/google/oauth/exchange", {
-    method: "POST",
-    body: JSON.stringify({ code }),
-  });
-
-  write("Google OAuth exchange", data);
-  setAdminStatus("Код OAuth успешно обработан.", "success");
-  return data;
+  try {
+    const data = await api("/admin/google/oauth/exchange", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
+    const successMessage = String(data.status || "").trim() || "Код OAuth успешно обработан.";
+    write("Google OAuth exchange", data);
+    setAdminStatus(successMessage, "success");
+    return data;
+  } catch (error) {
+    const baseMessage = String(error.message || "Не удалось выполнить OAuth reconnect.");
+    const reconnectHint = [
+      baseMessage,
+      "Проверьте, что вы вставили либо `code`, либо полный callback URL из адресной строки.",
+      "Если ошибка про `refresh_token`, нажмите «Показать инструкцию OAuth», повторно откройте OAuth URL и подтвердите доступ.",
+    ].join("\n");
+    setAdminStatus(reconnectHint, "error");
+    write("Google OAuth exchange error", { error: baseMessage });
+    return null;
+  }
 };
 
 const requestActionHandlers = {
@@ -1026,9 +1068,11 @@ const requestActionHandlers = {
 };
 
 document.getElementById("devLoginButton").addEventListener("click", async () => {
-  const telegramUserId = Number(telegramIdInput.value || 0);
-  if (!telegramUserId) {
-    authStatus.textContent = "Введите корректный Telegram ID.";
+  let telegramUserId;
+  try {
+    telegramUserId = parseTelegramUserIdInput(telegramIdInput.value);
+  } catch (error) {
+    authStatus.textContent = error.message;
     return;
   }
 
@@ -1207,9 +1251,8 @@ document.querySelectorAll("[data-action]").forEach((button) => {
           await updateAdminSettings();
           break;
         case "admin-oauth-url":
-          ensureAdminRole();
-          write("Google OAuth инструкция", await api("/admin/google/oauth/url"));
-          setAdminStatus("Инструкция OAuth загружена.", "success");
+          await loadOAuthInstructions();
+          setAdminStatus("Инструкция OAuth загружена и обновлена в форме.", "success");
           break;
         case "admin-oauth-exchange":
           await runOAuthExchange();

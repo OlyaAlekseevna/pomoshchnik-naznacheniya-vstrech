@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     google_calendar_id: str = "primary"
     google_oauth_scopes: str = "https://www.googleapis.com/auth/calendar"
 
-    miniapp_enabled: bool = True
+    miniapp_enabled: bool = False
     miniapp_dev_login_enabled: bool = False
     miniapp_session_ttl_minutes: int = 120
     miniapp_auth_max_age_seconds: int = 3600

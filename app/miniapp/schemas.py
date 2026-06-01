@@ -10,7 +10,7 @@ class AuthTelegramRequest(BaseModel):
 
 
 class DevLoginRequest(BaseModel):
-    telegram_user_id: int
+    telegram_user_id: int = Field(gt=0)
     first_name: str | None = None
     last_name: str | None = None
     username: str | None = None
@@ -77,4 +77,3 @@ class SettingUpdatePayload(BaseModel):
 
 class GoogleExchangePayload(BaseModel):
     code: str = Field(min_length=1, max_length=10_000)
-

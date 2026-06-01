@@ -30,7 +30,7 @@
       <div class="auth-grid">
         <div>
           <label for="telegramId">Telegram ID</label>
-          <input id="telegramId" type="number" placeholder="Например: 9001">
+          <input id="telegramId" type="text" inputmode="numeric" placeholder="Например: 9001">
         </div>
         <button id="devLoginButton" class="btn primary">Войти в прототип</button>
       </div>
@@ -217,6 +217,7 @@
             <button class="btn secondary strict" data-action="admin-oauth-url">Показать инструкцию OAuth</button>
             <button class="btn subtle strict" data-action="admin-oauth-exchange">Обменять код</button>
           </div>
+          <pre id="oauthInstructions" class="oauth-instructions">Нажмите «Показать инструкцию OAuth», чтобы получить актуальные шаги подключения.</pre>
         </div>
       </article>
     </section>
