@@ -306,6 +306,14 @@ class BackgroundJobsService:
             GooglePermissionDeniedError,
             GoogleIntegrationError,
         ) as error:
+            if isinstance(error, GoogleAuthRequiredError):
+                await self._send_google_oauth_reauth_notification(
+                    session=session,
+                    credentials=credentials,
+                    error=error,
+                    now=now,
+                )
+                return
             technical_error = await create_technical_error(
                 session=session,
                 source="google_calendar",
@@ -329,6 +337,41 @@ class BackgroundJobsService:
                 scope=refreshed_tokens.scope or credentials.scope,
                 token_type=refreshed_tokens.token_type or credentials.token_type,
             )
+
+    async def _send_google_oauth_reauth_notification(
+        self,
+        session: AsyncSession,
+        credentials: GoogleOAuthCredential,
+        error: GoogleAuthRequiredError,
+        now: datetime,
+    ) -> None:
+        if self._settings.telegram_admin_id is None:
+            return
+
+        state_version = (
+            _normalize_utc(credentials.updated_at)
+            or _normalize_utc(credentials.created_at)
+            or now
+        )
+        dedupe_key = (
+            f"{NOTIFICATION_TECHNICAL_AUTH_LOST}:"
+            f"oauth:{credentials.id}:{state_version.isoformat()}"
+        )
+        text = (
+            "Техническое уведомление по Google Calendar.\n"
+            "Код: GoogleAuthRequiredError\n"
+            f"Сообщение: {error}\n"
+            "Действие: переподключите Google OAuth в админке."
+        )
+        await self._attempt_send_notification(
+            session=session,
+            dedupe_key=dedupe_key,
+            notification_type=NOTIFICATION_TECHNICAL_AUTH_LOST,
+            target_telegram_user_id=self._settings.telegram_admin_id,
+            text=text,
+            sent_event="technical_oauth_reauth_notification_sent",
+            scheduled_for=state_version,
+        )
 
     async def _send_google_oauth_expiry_warning(
         self,
