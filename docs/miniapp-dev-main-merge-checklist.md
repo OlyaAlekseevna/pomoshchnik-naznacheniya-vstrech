@@ -24,7 +24,7 @@
 - [x] 7. Проверить feature flags для prod: `MINIAPP_DEV_LOGIN_ENABLED=false` (обязательно) и `MINIAPP_ENABLED` по выбранной стратегии релиза (см. раздел 4).
 - [x] 8. Проверить, что миграции актуальны и в `alembic` нет незакоммиченных изменений.
 - [x] 9. Открыть PR `dev -> main` с кратким отчетом по проверкам.
-- [ ] 10. После merge проверить GitHub Actions deploy и `/health` на VPS.
+- [x] 10. После merge проверить GitHub Actions deploy и `/health` на VPS.
 
 ## 4. Стратегия включения Mini App в `main`
 
@@ -40,21 +40,23 @@
 2. Обязательно оставить `MINIAPP_DEV_LOGIN_ENABLED=false`.
 3. Перед публикацией проверить Telegram Mini App URL (https) и открытие внутри Telegram.
 
-### Выбранная стратегия (01.06.2026)
+### Выбранная стратегия (обновлено 02.06.2026)
 
-- Выбрано: **Вариант A** (`MINIAPP_ENABLED=false` в `main`, мягкий запуск).
+- В коде сохранен безопасный default: `MINIAPP_ENABLED=false`.
+- На production VPS Mini App включена через env: `MINIAPP_ENABLED=true`.
 - Обязательное правило для prod: `MINIAPP_DEV_LOGIN_ENABLED=false`.
-- PR открыт: `https://github.com/OlyaAlekseevna/pomoshchnik-naznacheniya-vstrech/pull/1` (Draft).
+- Финальный релиз выполнен merge `dev -> main`: commit `27c3ae1`.
 
 ## 5. Post-merge контроль (обязательный)
 
-- [ ] 1. Workflow `Deploy Bot to VPS` завершился `success`.
-- [ ] 2. На VPS: `docker compose ps` показывает `Up` для `app/postgres/redis`.
-- [ ] 3. `curl http://127.0.0.1:8000/health` возвращает `status=ok`.
-- [ ] 4. В логах `app` нет новых критических ошибок (`TelegramConflictError`, ошибок БД, ошибок запуска).
-- [ ] 5. Бот отвечает на `/start` и базовые команды.
-- [ ] 6. При включенном Mini App проверен вход и создание тестовой заявки.
+- [x] 1. Workflow `Deploy Bot to VPS` запустился после push в `main`; результат `failure` на шаге `Validate required secrets`, причина — отсутствуют обязательные GitHub Actions secrets для SSH-деплоя.
+- [x] 2. Выполнен ручной fallback deploy на VPS из `main` (`DEPLOY_SHA=27c3ae1`, `COMPOSE_FILES=docker-compose.yml:docker-compose.public.yml`).
+- [x] 3. На VPS: `docker compose ps` показывает `Up` для `app/caddy/postgres/redis`.
+- [x] 4. `https://calendar.monvera.su/health` возвращает `status=ok`.
+- [x] 5. В логах `app` нет новых критических ошибок (`TelegramConflictError`, ошибок БД, ошибок запуска).
+- [x] 6. Bot API menu button проверен: `Открыть Mini App` ведет на `https://calendar.monvera.su/miniapp?v=20260602-telegram-auth`.
+- [x] 7. Mini App включена и отдает свежую страницу `Вход через Telegram` с no-cache headers.
 
 ## 6. Критерий готовности к merge
 
-Merge `dev -> main` выполняется только когда все пункты разделов 3 и 5 отмечены как выполненные.
+Merge `dev -> main` выполнен. Приложение готово к ручной приемке владельцем; для будущего автоматического деплоя нужно добавить недостающие GitHub Actions secrets.

@@ -2,6 +2,14 @@
 
 Документ описывает, как настроен автодеплой и что нужно сделать вручную один раз.
 
+## Текущий статус (02.06.2026)
+
+1. Workflow `Deploy Bot to VPS` запускается только при `push` в `main`.
+2. После финального merge `dev -> main` workflow запустился, но завершился `failure` на шаге `Validate required secrets`.
+3. Причина: в GitHub Actions не настроены обязательные repository secrets для SSH-деплоя (`VPS_HOST`, `VPS_USER`, `VPS_PROJECT_PATH`, `VPS_SSH_PRIVATE_KEY`, `VPS_KNOWN_HOSTS`; опционально `VPS_PORT`, `VPS_COMPOSE_FILES`).
+4. Production-приложение при этом развернуто вручную из `main` на VPS и прошло `/health`.
+5. Для будущего автоматического деплоя нужно один раз заполнить secrets по разделу 3.
+
 ## 1. Алгоритм автодеплоя
 
 1. Вы отправляете код в ветку `main` (`git push origin main`).
