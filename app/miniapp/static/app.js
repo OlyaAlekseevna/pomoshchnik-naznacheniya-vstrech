@@ -49,7 +49,17 @@ let bookingPageOffset = 0;
 let selectedWorkingDays = new Set();
 
 const telegramWebApp = window.Telegram?.WebApp || null;
-const telegramInitData = telegramWebApp?.initData || "";
+const extractTelegramInitData = () => {
+  const sdkInitData = telegramWebApp?.initData || "";
+  if (sdkInitData) {
+    return sdkInitData;
+  }
+
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const queryParams = new URLSearchParams(window.location.search);
+  return hashParams.get("tgWebAppData") || queryParams.get("tgWebAppData") || "";
+};
+const telegramInitData = extractTelegramInitData();
 const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 
 const adminWeekdayOptions = [

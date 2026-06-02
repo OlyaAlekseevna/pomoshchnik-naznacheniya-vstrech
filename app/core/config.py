@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     google_oauth_scopes: str = "https://www.googleapis.com/auth/calendar"
 
     miniapp_enabled: bool = False
+    miniapp_domain: str | None = None
     miniapp_dev_login_enabled: bool = False
     miniapp_session_ttl_minutes: int = 120
     miniapp_auth_max_age_seconds: int = 3600
@@ -119,6 +120,7 @@ class Settings(BaseSettings):
             "google_oauth_client_secret_configured": bool(self.google_oauth_client_secret),
             "google_calendar_id": self.google_calendar_id,
             "miniapp_enabled": self.miniapp_enabled,
+            "miniapp_domain_configured": bool(self.miniapp_domain),
             "miniapp_dev_login_enabled": self.miniapp_dev_login_enabled,
             "miniapp_session_ttl_minutes": self.miniapp_session_ttl_minutes,
             "miniapp_auth_max_age_seconds": self.miniapp_auth_max_age_seconds,
