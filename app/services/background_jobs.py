@@ -386,6 +386,10 @@ class BackgroundJobsService:
         if warning_minutes <= 0:
             return
 
+        if credentials.refresh_token:
+            # Refreshable access tokens normally expire hourly; that is not actionable for admin.
+            return
+
         expires_at = _normalize_utc(credentials.access_token_expires_at)
         if expires_at is None:
             return

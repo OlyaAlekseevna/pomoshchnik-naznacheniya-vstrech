@@ -26,7 +26,6 @@ from app.db.repositories import (
 from app.services.background_jobs import (
     NOTIFICATION_TECHNICAL_AUTH_LOST,
     NOTIFICATION_TECHNICAL_ERROR,
-    NOTIFICATION_TECHNICAL_OAUTH_EXPIRING,
     BackgroundJobsService,
 )
 from app.services.google_calendar import GoogleAuthRequiredError, GoogleCalendarService
@@ -364,7 +363,7 @@ async def test_technical_notifications_for_google_errors_are_deduplicated() -> N
 
 
 @pytest.mark.asyncio
-async def test_google_oauth_expiry_warning_is_sent_once_per_token_expiry() -> None:
+async def test_google_oauth_expiry_warning_is_not_sent_for_refreshable_token() -> None:
     engine, session_factory = await _create_session_factory()
     bot = FakeBot()
     service = BackgroundJobsService(
@@ -393,15 +392,11 @@ async def test_google_oauth_expiry_warning_is_sent_once_per_token_expiry() -> No
     await service.run_technical_notifications_job()
     await service.run_technical_notifications_job()
 
-    assert len(bot.sent_messages) == 1
-    assert bot.sent_messages[0][0] == 9001
-    assert "скоро истекает" in bot.sent_messages[0][1].lower()
+    assert bot.sent_messages == []
 
     async with session_factory() as session:
         deliveries = (await session.execute(select(NotificationDelivery))).scalars().all()
-        assert len(deliveries) == 1
-        assert deliveries[0].status == NotificationDeliveryStatus.SENT
-        assert deliveries[0].notification_type == NOTIFICATION_TECHNICAL_OAUTH_EXPIRING
+        assert deliveries == []
 
     await engine.dispose()
 
