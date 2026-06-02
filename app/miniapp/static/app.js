@@ -1,6 +1,9 @@
-﻿const output = document.getElementById("output");
+const output = document.getElementById("output");
 const authStatus = document.getElementById("authStatus");
+const authHint = document.getElementById("authHint");
 const telegramIdInput = document.getElementById("telegramId");
+const devLoginControls = document.getElementById("devLoginControls");
+const devLoginButton = document.getElementById("devLoginButton");
 const roleBadge = document.getElementById("userRoleBadge");
 
 const meetingDateInput = document.getElementById("meetingDate");
@@ -44,6 +47,10 @@ let currentRole = "guest";
 let bookingConfig = null;
 let bookingPageOffset = 0;
 let selectedWorkingDays = new Set();
+
+const telegramWebApp = window.Telegram?.WebApp || null;
+const telegramInitData = telegramWebApp?.initData || "";
+const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 
 const adminWeekdayOptions = [
   { value: "monday", label: "ПН", icon: "🌿" },
@@ -94,6 +101,14 @@ const parseTelegramUserIdInput = (rawValue) => {
     throw new Error("Telegram ID должен содержать только цифры.");
   }
   return value;
+};
+
+const applyAuthResponse = (data, sourceLabel) => {
+  token = data.access_token;
+  currentRole = data.role;
+  roleBadge.textContent = data.role;
+  authStatus.textContent = `Вы вошли как ${data.role}. Telegram ID: ${data.telegram_user_id}.`;
+  write("Авторизация", { source: sourceLabel, auth: data });
 };
 
 const api = async (path, options = {}) => {
@@ -1067,7 +1082,59 @@ const requestActionHandlers = {
   },
 };
 
-document.getElementById("devLoginButton").addEventListener("click", async () => {
+const authenticateWithTelegram = async () => {
+  if (!telegramInitData) {
+    return false;
+  }
+
+  try {
+    telegramWebApp?.ready?.();
+    telegramWebApp?.expand?.();
+    authStatus.textContent = "Входим через Telegram...";
+
+    const data = await api("/auth/telegram", {
+      method: "POST",
+      body: JSON.stringify({ init_data: telegramInitData }),
+    });
+
+    devLoginControls?.classList.add("hidden");
+    if (authHint) {
+      authHint.textContent = "Вход выполнен через Telegram.";
+    }
+    applyAuthResponse(data, "telegram");
+    await initializeAfterLogin();
+    return true;
+  } catch (error) {
+    authStatus.textContent = `Не удалось войти через Telegram: ${error.message}`;
+    write("Ошибка Telegram-авторизации", { error: error.message });
+    return false;
+  }
+};
+
+const configureAuthPanel = async () => {
+  if (telegramInitData) {
+    devLoginControls?.classList.add("hidden");
+    if (authHint) {
+      authHint.textContent = "Проверяем подпись Telegram и выполняем вход.";
+    }
+    await authenticateWithTelegram();
+    return;
+  }
+
+  if (isLocalHost) {
+    devLoginControls?.classList.remove("hidden");
+    if (authHint) {
+      authHint.textContent = "Локальная dev-проверка: введите Telegram ID и нажмите «Войти».";
+    }
+    authStatus.textContent = "Dev login доступен только при включенной настройке окружения.";
+    return;
+  }
+
+  devLoginControls?.classList.add("hidden");
+  authStatus.textContent = "Откройте Mini App через кнопку меню в @plangoogle_bot. Вход по Telegram ID отключен в проде.";
+};
+
+devLoginButton?.addEventListener("click", async () => {
   let telegramUserId;
   try {
     telegramUserId = parseTelegramUserIdInput(telegramIdInput.value);
@@ -1082,19 +1149,13 @@ document.getElementById("devLoginButton").addEventListener("click", async () => 
       body: JSON.stringify({ telegram_user_id: telegramUserId }),
     });
 
-    token = data.access_token;
-    currentRole = data.role;
-    roleBadge.textContent = data.role;
-    authStatus.textContent = `Вы вошли как ${data.role}. Telegram ID: ${data.telegram_user_id}.`;
-    write("Авторизация", { auth: data });
-
+    applyAuthResponse(data, "dev-login");
     await initializeAfterLogin();
   } catch (error) {
     authStatus.textContent = error.message;
     write("Ошибка авторизации", { error: error.message });
   }
 });
-
 document.getElementById("clearOutput").addEventListener("click", () => {
   output.textContent = "";
 });
@@ -1294,3 +1355,4 @@ document.querySelectorAll("[data-action]").forEach((button) => {
 });
 
 applySettingEditorMode();
+void configureAuthPanel();
