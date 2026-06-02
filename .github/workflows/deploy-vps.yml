@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 concurrency:
   group: deploy-production
@@ -73,5 +72,5 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -p "$VPS_PORT" \
             "$VPS_USER@$VPS_HOST" \
-            "PROJECT_PATH='$VPS_PROJECT_PATH' DEPLOY_BRANCH='${GITHUB_REF_NAME}' DEPLOY_SHA='${GITHUB_SHA}' COMPOSE_FILES='${VPS_COMPOSE_FILES:-docker-compose.yml}' HEALTHCHECK_URL='http://127.0.0.1:8000/health' bash -s" \
+            "PROJECT_PATH='$VPS_PROJECT_PATH' DEPLOY_BRANCH='main' DEPLOY_SHA='${GITHUB_SHA}' COMPOSE_FILES='${VPS_COMPOSE_FILES:-docker-compose.yml}' HEALTHCHECK_URL='http://127.0.0.1:8000/health' bash -s" \
             < scripts/deploy_vps.sh
