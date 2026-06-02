@@ -7,9 +7,11 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 
 from app.bot.user_flow_service import SlotChoice
+from app.core.config import get_settings
 from app.domain.scheduling import WeekWindow
 
 DURATIONS_MINUTES = (15, 30, 45, 90)
@@ -17,6 +19,8 @@ BACK_TEXT = "Назад"
 BOOK_TEXT = "Записаться на консультацию"
 MY_REQUESTS_TEXT = "Мои заявки"
 DELETE_MY_DATA_TEXT = "Удалить мои данные"
+OPEN_MINIAPP_TEXT = "Открыть Mini App"
+MINIAPP_URL_VERSION = "20260602-telegram-auth"
 CONSENT_TEXT = "Согласен(на)"
 SUBMIT_TEXT = "Отправить заявку"
 
@@ -32,12 +36,24 @@ _WEEKDAY_LABELS = {
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
+    settings = get_settings()
+    keyboard = [
+        [KeyboardButton(text=BOOK_TEXT)],
+        [KeyboardButton(text=MY_REQUESTS_TEXT)],
+        [KeyboardButton(text=DELETE_MY_DATA_TEXT)],
+    ]
+    if settings.miniapp_enabled and settings.miniapp_domain:
+        miniapp_url = (
+            f"https://{settings.miniapp_domain.strip().rstrip('/')}/miniapp"
+            f"?v={MINIAPP_URL_VERSION}"
+        )
+        keyboard.insert(
+            0,
+            [KeyboardButton(text=OPEN_MINIAPP_TEXT, web_app=WebAppInfo(url=miniapp_url))],
+        )
+
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=BOOK_TEXT)],
-            [KeyboardButton(text=MY_REQUESTS_TEXT)],
-            [KeyboardButton(text=DELETE_MY_DATA_TEXT)],
-        ],
+        keyboard=keyboard,
         resize_keyboard=True,
     )
 

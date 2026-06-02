@@ -63,6 +63,53 @@ ruff check .
 pytest
 ```
 
+## Mini App prototype (dev)
+
+Прототип Mini App подключается как дополнительный канал к существующему боту и не заменяет его.
+
+1. Убедитесь, что включены флаги в `.env`:
+
+```env
+MINIAPP_ENABLED=true
+MINIAPP_DEV_LOGIN_ENABLED=true
+```
+
+2. Запустите приложение (локально или через Docker Compose).
+
+3. Откройте прототип в браузере:
+
+```text
+http://localhost:8000/miniapp
+```
+
+4. Для входа в прототип используйте `dev login` по Telegram ID.
+
+Полезные маршруты:
+
+1. `GET /miniapp` — UI прототипа.
+2. `GET /api/miniapp/health` — health Mini App API.
+3. `POST /api/miniapp/auth/dev-login` — быстрый вход в dev.
+4. `GET /api/miniapp/notifications` — продуктовый блок уведомлений.
+5. `GET /api/miniapp/support` — продуктовый блок поддержки.
+
+### Mini App на том же VPS (prod)
+
+Для публикации Mini App на том же сервере, где работает бот, добавлен отдельный HTTPS-контур (Caddy + Let's Encrypt):
+
+1. `docker-compose.public.yml`
+2. `docker/caddy/Caddyfile`
+3. инструкция: `docs/miniapp-domain-vps.md`
+
+Коротко:
+1. привязать домен к `132.243.23.161`;
+2. выставить `MINIAPP_DOMAIN` и `MINIAPP_ENABLED=true` на VPS;
+3. запустить deploy с `COMPOSE_FILES=docker-compose.yml:docker-compose.public.yml`.
+
+Графика прототипа:
+
+1. Кастомные иконки: `app/miniapp/static/icons/*`.
+2. Иллюстрации ключевых экранов: `app/miniapp/static/illustrations/*`.
+
 ## Миграции базы данных
 
 Применить миграции:
@@ -81,6 +128,17 @@ alembic downgrade -1
 ## Мониторинг и диагностика на VPS
 
 Сервер проекта: `132.243.23.161`.
+
+### Контроль Google OAuth токена
+
+1. Фоновый сервис проверяет Google OAuth и шлет технические уведомления администратору в Telegram.
+2. Предупреждение о скором истечении access token управляется переменной:
+
+```env
+BACKGROUND_GOOGLE_OAUTH_EXPIRY_WARNING_MINUTES=30
+```
+
+3. Если токен перестал обновляться (нужна повторная авторизация), администратор получает техническое уведомление автоматически.
 
 1. Подключение к серверу:
 

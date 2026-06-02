@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mini App • Календарь встреч</title>
+  <link rel="stylesheet" href="/miniapp/static/styles.css?v=20260602-telegram-auth">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="hero card">
+      <div class="hero-copy">
+        <p class="eyebrow">Прототип Mini App</p>
+        <h1>Календарь встреч в Telegram</h1>
+        <p class="muted">
+          Записывайтесь быстрее, следите за статусом заявок и управляйте встречами
+          в одном интерфейсе. Telegram-бот при этом работает параллельно.
+        </p>
+      </div>
+      <img
+        class="hero-illustration"
+        src="/miniapp/static/illustrations/hero-booking.svg"
+        alt="Иллюстрация с идеей быстрой записи и управления заявками"
+      >
+    </section>
+
+    <section id="authPanel" class="auth-panel card">
+      <h2>Вход через Telegram</h2>
+      <p id="authHint" class="muted">
+        Откройте Mini App из меню Telegram-бота, чтобы войти автоматически.
+      </p>
+      <div id="devLoginControls" class="auth-grid hidden">
+        <div>
+          <label for="telegramId">Telegram ID</label>
+          <input id="telegramId" type="text" inputmode="numeric" placeholder="Например: 9001">
+        </div>
+        <button id="devLoginButton" class="btn primary">Войти в прототип</button>
+      </div>
+      <p id="authStatus" class="muted"></p>
+    </section>
+
+    <section class="content-grid">
+      <article class="card user-card">
+        <header class="card-header">
+          <h2>Пользовательский сценарий</h2>
+          <span id="userRoleBadge" class="role-badge">guest</span>
+        </header>
+        <p class="muted">
+          Ключевые блоки: запись, заявки, профиль, поддержка и уведомления.
+        </p>
+        <div class="action-grid">
+          <button class="action-card" data-action="booking-config">
+            <img src="/miniapp/static/icons/book.svg" alt="">
+            <span>Записаться</span>
+          </button>
+          <button class="action-card" data-action="my-requests">
+            <img src="/miniapp/static/icons/requests.svg" alt="">
+            <span>Мои заявки</span>
+          </button>
+          <button class="action-card" data-action="profile">
+            <img src="/miniapp/static/icons/profile.svg" alt="">
+            <span>Профиль</span>
+          </button>
+          <button class="action-card" data-action="support">
+            <img src="/miniapp/static/icons/support.svg" alt="">
+            <span>Поддержка</span>
+          </button>
+          <button class="action-card" data-action="notifications">
+            <img src="/miniapp/static/icons/notifications.svg" alt="">
+            <span>Уведомления</span>
+          </button>
+        </div>
+        <div class="controls">
+          <h3>Шаг 1. Выберите день, длительность и слот</h3>
+          <p class="muted">Нажмите на день ближайшей недели, затем выберите длительность и найдите свободные слоты.</p>
+          <div id="weekDays" class="week-days"></div>
+          <div class="week-nav">
+            <button id="bookingNextButton" class="btn ghost" type="button">Далее 7 дней</button>
+          </div>
+          <input id="meetingDate" type="hidden">
+          <label for="duration">Длительность (мин)</label>
+          <select id="duration" disabled>
+            <option value="">Сначала выберите день</option>
+          </select>
+          <button id="bookingSlotsButton" class="btn secondary" data-action="booking-slots" disabled>Найти свободные слоты</button>
+          <label for="slotSelect">Свободные слоты</label>
+          <select id="slotSelect">
+            <option value="">Сначала выберите день недели</option>
+          </select>
+          <p id="bookingStatus" class="muted status-line"></p>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 2. Заполните данные заявки</h3>
+          <label for="fullName">ФИО</label>
+          <input id="fullName" type="text" placeholder="Иванова Анна Сергеевна">
+          <label for="phone">Телефон</label>
+          <input id="phone" type="text" placeholder="+7 999 123-45-67">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="anna@example.com">
+          <label for="meetingGoal">Цель встречи</label>
+          <textarea id="meetingGoal" rows="4" placeholder="Коротко опишите, что хотите обсудить"></textarea>
+          <label class="checkbox-row">
+            <input id="personalConsent" type="checkbox">
+            <span>Подтверждаю согласие на обработку персональных данных</span>
+          </label>
+          <button id="createRequestButton" class="btn primary">Отправить заявку на согласование</button>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 3. Мои заявки</h3>
+          <button class="btn ghost" data-action="my-requests">Обновить список заявок</button>
+          <div id="requestsList" class="requests-list">
+            <p class="muted">После авторизации здесь появятся ваши заявки.</p>
+          </div>
+        </div>
+      </article>
+
+      <article class="card admin-card">
+        <header class="card-header">
+          <h2>Админ-панель (строгий режим)</h2>
+          <span class="role-badge strict">admin</span>
+        </header>
+        <p class="muted">
+          Полный перенос ключевых функций: заявки, настройки, Google OAuth.
+        </p>
+        <div class="action-grid">
+          <button class="action-card strict" data-action="admin-requests">
+            <img src="/miniapp/static/icons/admin-requests.svg" alt="">
+            <span>Заявки</span>
+          </button>
+          <button class="action-card strict" data-action="admin-settings">
+            <img src="/miniapp/static/icons/admin-settings.svg" alt="">
+            <span>Настройки</span>
+          </button>
+          <button class="action-card strict" data-action="admin-oauth-url">
+            <img src="/miniapp/static/icons/support.svg" alt="">
+            <span>Google OAuth</span>
+          </button>
+        </div>
+        <div class="controls">
+          <h3>Шаг 1. Очередь заявок</h3>
+          <button class="btn secondary strict" data-action="admin-requests">Обновить очередь</button>
+          <div id="adminRequestsList" class="requests-list strict">
+            <p class="muted">После входа админа здесь появятся заявки.</p>
+          </div>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 2. Действия по заявке</h3>
+          <label for="requestId">ID заявки</label>
+          <input id="requestId" type="number" placeholder="Введите ID заявки">
+          <label for="rejectReason">Причина отклонения</label>
+          <textarea id="rejectReason" rows="2" placeholder="Например: занято это время"></textarea>
+          <label for="alternativeSlot">Альтернативный слот</label>
+          <input id="alternativeSlot" type="text" placeholder="2026-06-02 12:00-12:30">
+          <div class="request-actions">
+            <button class="btn secondary strict" data-action="admin-approve">Согласовать</button>
+            <button class="btn warn" data-action="admin-reject">Отклонить</button>
+            <button class="btn subtle strict" data-action="admin-alternative">Предложить слот</button>
+            <button class="btn subtle strict" data-action="admin-history">История статусов</button>
+            <button class="btn warn" data-action="admin-block">Блокировать</button>
+            <button class="btn subtle strict" data-action="admin-unblock">Разблокировать</button>
+            <button class="btn subtle strict" data-action="admin-manual-create">Ручное создание встречи</button>
+          </div>
+          <p id="adminStatus" class="muted status-line"></p>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 3. Настройки расписания</h3>
+          <label for="settingKey">Ключ настройки</label>
+          <select id="settingKey">
+            <option value="working_days">Рабочие дни</option>
+            <option value="working_hours">Рабочие часы</option>
+            <option value="durations">Длительности консультаций</option>
+            <option value="min_notice">Минимальный запас до встречи (часы)</option>
+            <option value="buffer">Буфер между встречами (минуты)</option>
+            <option value="daily_limit">Лимит встреч в день</option>
+            <option value="horizon">Горизонт записи (дни)</option>
+            <option value="forbidden_date">Запрещенная дата</option>
+            <option value="forbidden_period">Запрещенный период</option>
+            <option value="new_request_text">Текст уведомления о новой заявке</option>
+          </select>
+
+          <div id="workingDaysCalendarEditor" class="setting-editor hidden">
+            <label>Календарь рабочих дней (неделя)</label>
+            <p class="muted">Отметьте дни недели, когда вы работаете.</p>
+            <div id="settingsWeekDays" class="week-days settings-week-days"></div>
+          </div>
+
+          <div id="workingHoursEditor" class="setting-editor hidden">
+            <label>Рабочие часы</label>
+            <div class="setting-time-grid">
+              <div>
+                <label for="workdayStartTime">Начало</label>
+                <input id="workdayStartTime" type="time" step="900">
+              </div>
+              <div>
+                <label for="workdayEndTime">Окончание</label>
+                <input id="workdayEndTime" type="time" step="900">
+              </div>
+            </div>
+          </div>
+
+          <label id="settingValueLabel" for="settingValue">Значение</label>
+          <textarea id="settingValue" rows="3" placeholder="Пример: 09:00-18:00"></textarea>
+          <p id="settingValueHint" class="muted">Для ключей «Рабочие дни» и «Рабочие часы» значение формируется автоматически.</p>
+          <div class="request-actions">
+            <button class="btn secondary strict" data-action="admin-settings">Показать текущие настройки</button>
+            <button class="btn subtle strict" data-action="admin-settings-update">Обновить настройку</button>
+          </div>
+        </div>
+
+        <div class="controls">
+          <h3>Шаг 4. Google OAuth</h3>
+          <label for="oauthCode">Код авторизации (или полный callback URL)</label>
+          <textarea id="oauthCode" rows="2" placeholder="Вставьте код или полный callback URL"></textarea>
+          <div class="request-actions">
+            <button class="btn secondary strict" data-action="admin-oauth-url">Показать инструкцию OAuth</button>
+            <button class="btn subtle strict" data-action="admin-oauth-exchange">Обменять код</button>
+          </div>
+          <pre id="oauthInstructions" class="oauth-instructions">Нажмите «Показать инструкцию OAuth», чтобы получить актуальные шаги подключения.</pre>
+        </div>
+      </article>
+    </section>
+
+    <section id="requestsEmptyState" class="card empty-state hidden">
+      <img src="/miniapp/static/illustrations/empty-requests.svg" alt="Иллюстрация пустого списка заявок">
+      <div>
+        <h2>Пока заявок нет</h2>
+        <p class="muted">Когда вы создадите первую заявку, она появится в разделе «Мои заявки».</p>
+      </div>
+    </section>
+
+    <section class="card output-card">
+      <header class="card-header">
+        <h2>Журнал действий прототипа</h2>
+        <button id="clearOutput" class="btn ghost">Очистить журнал</button>
+      </header>
+      <pre id="output"></pre>
+    </section>
+  </main>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/miniapp/static/app.js?v=20260602-telegram-auth"></script>
+</body>
+</html>

@@ -384,8 +384,10 @@ def build_google_oauth_instructions(settings: Settings, service: GoogleCalendarS
         "Подключение Google Calendar:\n"
         "1) Откройте ссылку ниже в браузере.\n"
         "2) Выберите Google-аккаунт с календарем.\n"
-        "3) Скопируйте code из шага авторизации.\n"
-        "4) Вернитесь в бот и отправьте code следующим сообщением.\n\n"
+        "3) После подтверждения доступа скопируйте `code` или весь callback URL.\n"
+        "4) Вставьте значение в Step 4 (Google OAuth) в Mini App или отправьте в /admin.\n"
+        "5) Если появился запрос на повторную авторизацию, "
+        "снова откройте OAuth URL и повторите шаги.\n\n"
         f"OAuth URL:\n{url}\n\n"
         f"Redirect URI: {settings.google_oauth_redirect_uri}"
     )

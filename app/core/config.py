@@ -35,12 +35,19 @@ class Settings(BaseSettings):
     background_notification_retry_delay_seconds: int = 60
     background_notification_max_attempts: int = 3
     background_technical_errors_lookback_hours: int = 48
+    background_google_oauth_expiry_warning_minutes: int = 30
 
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: SecretStr | None = None
     google_oauth_redirect_uri: str = "urn:ietf:wg:oauth:2.0:oob"
     google_calendar_id: str = "primary"
     google_oauth_scopes: str = "https://www.googleapis.com/auth/calendar"
+
+    miniapp_enabled: bool = False
+    miniapp_domain: str | None = None
+    miniapp_dev_login_enabled: bool = False
+    miniapp_session_ttl_minutes: int = 120
+    miniapp_auth_max_age_seconds: int = 3600
 
     postgres_host: str = "postgres"
     postgres_port: int = 5432
@@ -106,9 +113,17 @@ class Settings(BaseSettings):
             "background_technical_errors_lookback_hours": (
                 self.background_technical_errors_lookback_hours
             ),
+            "background_google_oauth_expiry_warning_minutes": (
+                self.background_google_oauth_expiry_warning_minutes
+            ),
             "google_oauth_client_id_configured": bool(self.google_oauth_client_id),
             "google_oauth_client_secret_configured": bool(self.google_oauth_client_secret),
             "google_calendar_id": self.google_calendar_id,
+            "miniapp_enabled": self.miniapp_enabled,
+            "miniapp_domain_configured": bool(self.miniapp_domain),
+            "miniapp_dev_login_enabled": self.miniapp_dev_login_enabled,
+            "miniapp_session_ttl_minutes": self.miniapp_session_ttl_minutes,
+            "miniapp_auth_max_age_seconds": self.miniapp_auth_max_age_seconds,
         }
 
 

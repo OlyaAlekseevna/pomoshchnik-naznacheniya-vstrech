@@ -21,12 +21,14 @@ from app.db.repositories import (
     create_slot_reservation,
     create_technical_error,
     get_or_create_user_by_telegram_id,
+    upsert_google_oauth_credentials,
 )
 from app.services.background_jobs import (
     NOTIFICATION_TECHNICAL_AUTH_LOST,
     NOTIFICATION_TECHNICAL_ERROR,
     BackgroundJobsService,
 )
+from app.services.google_calendar import GoogleAuthRequiredError, GoogleCalendarService
 
 
 class FakeBot:
@@ -356,5 +358,95 @@ async def test_technical_notifications_for_google_errors_are_deduplicated() -> N
             NOTIFICATION_TECHNICAL_ERROR,
             NOTIFICATION_TECHNICAL_AUTH_LOST,
         }
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_google_oauth_expiry_warning_is_not_sent_for_refreshable_token() -> None:
+    engine, session_factory = await _create_session_factory()
+    bot = FakeBot()
+    service = BackgroundJobsService(
+        settings=_background_settings(
+            google_oauth_client_id="client-id",
+            google_oauth_client_secret="client-secret",
+            background_google_oauth_expiry_warning_minutes=30,
+        ),
+        session_factory=session_factory,
+        bot=bot,
+    )
+    now = datetime.now(UTC).replace(microsecond=0)
+
+    async with session_factory() as session:
+        await _seed_settings(session)
+        await upsert_google_oauth_credentials(
+            session=session,
+            refresh_token="refresh-token",
+            access_token="access-token",
+            access_token_expires_at=now + timedelta(minutes=10),
+            scope="https://www.googleapis.com/auth/calendar",
+            token_type="Bearer",
+        )
+        await session.commit()
+
+    await service.run_technical_notifications_job()
+    await service.run_technical_notifications_job()
+
+    assert bot.sent_messages == []
+
+    async with session_factory() as session:
+        deliveries = (await session.execute(select(NotificationDelivery))).scalars().all()
+        assert deliveries == []
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_google_oauth_reauth_notification_is_not_spammed_per_check_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine, session_factory = await _create_session_factory()
+    bot = FakeBot()
+    service = BackgroundJobsService(
+        settings=_background_settings(
+            google_oauth_client_id="client-id",
+            google_oauth_client_secret="client-secret",
+            background_google_oauth_expiry_warning_minutes=0,
+        ),
+        session_factory=session_factory,
+        bot=bot,
+    )
+    now = datetime.now(UTC)
+
+    async with session_factory() as session:
+        await _seed_settings(session)
+        await upsert_google_oauth_credentials(
+            session=session,
+            refresh_token="refresh-token",
+            access_token="expired-token",
+            access_token_expires_at=now - timedelta(minutes=5),
+            scope="https://www.googleapis.com/auth/calendar",
+            token_type="Bearer",
+        )
+        await session.commit()
+
+    async def _raise_reauth(self, credentials):  # noqa: ANN001
+        raise GoogleAuthRequiredError("Google refresh token is invalid or expired.")
+
+    monkeypatch.setattr(GoogleCalendarService, "get_valid_access_token", _raise_reauth)
+
+    await service.run_technical_notifications_job()
+    await service.run_technical_notifications_job()
+
+    assert len(bot.sent_messages) == 1
+    assert bot.sent_messages[0][0] == 9001
+    assert "переподключите" in bot.sent_messages[0][1].lower()
+
+    async with session_factory() as session:
+        deliveries = (await session.execute(select(NotificationDelivery))).scalars().all()
+        assert len(deliveries) == 1
+        assert deliveries[0].status == NotificationDeliveryStatus.SENT
+        assert deliveries[0].notification_type == NOTIFICATION_TECHNICAL_AUTH_LOST
+        assert deliveries[0].technical_error_id is None
 
     await engine.dispose()

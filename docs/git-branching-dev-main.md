@@ -1,64 +1,55 @@
-# Работа с ветками `dev` и `main`
+﻿# Работа с ветками `dev` и `main`
 
-Этот проект использует простую схему:
+## Цель
 
-1. `dev` — разработка и тестирование.
-2. `main` — продакшен.
+Зафиксировать безопасный процесс разработки, чтобы не ломать production-бота при доработках Mini App и других функций.
 
-Деплой на сервер запускается только при `push` в `main`.
+## Правила
 
-## 1. Правила
+1. Все новые изменения делаются в ветке `dev`.
+2. `main` используется только как production-ветка.
+3. Прямые рабочие изменения в `main` не вносятся.
+4. Перенос из `dev` в `main` выполняется только через merge после проверок.
+5. `push` в `main` запускает автодеплой на VPS через workflow `.github/workflows/deploy-vps.yml`.
+6. `push` в `dev` не должен автоматически деплоить production-код на сервер.
+7. Для Mini App merge используется чек-лист `docs/miniapp-dev-main-merge-checklist.md`.
 
-1. Все новые изменения делаем в `dev`.
-2. В `main` напрямую не работаем.
-3. После проверки в `dev` переносим изменения в `main` через merge.
-4. Только `push` в `main` запускает автодеплой на VPS.
-5. `push` в `dev` никогда не деплоит код на сервер.
+## Обязательные проверки перед merge
 
-## 2. Ежедневный рабочий цикл
+1. Обновить локальный `dev`: `git checkout dev && git pull --ff-only origin dev`.
+2. Убедиться, что рабочее дерево чистое, кроме явно согласованных untracked-файлов.
+3. Прогнать `ruff check .`.
+4. Прогнать `pytest -q`.
+5. Проверить smoke текущего Telegram-бота.
+6. Если Mini App включена, проверить smoke Mini App: `/miniapp`, `/health`, auth, user/admin сценарии.
+7. Проверить production feature flags: `MINIAPP_DEV_LOGIN_ENABLED=false`; `MINIAPP_ENABLED` задается выбранной стратегией запуска.
 
-1. Переключиться на `dev`:
+## Релизный цикл
 
 ```bash
 git checkout dev
-git pull origin dev
-```
+git pull --ff-only origin dev
+ruff check .
+pytest -q
 
-2. Сделать изменения, commit, push:
-
-```bash
-git add .
-git commit -m "feat: описание изменения"
-git push origin dev
-```
-
-3. Протестировать на `dev` (локально и/или в тестовом окружении).
-4. Когда все готово к релизу, влить `dev` в `main`:
-
-```bash
 git checkout main
-git pull origin main
+git pull --ff-only origin main
 git merge --no-ff dev
 git push origin main
 ```
 
-5. После `git push origin main` проверить GitHub Actions:
-   - Workflow `Deploy Bot to VPS` должен завершиться со статусом `success`.
+После `git push origin main` нужно проверить:
 
-## 3. Быстрая проверка, что деплой не идет из `dev`
+1. Workflow `Deploy Bot to VPS` завершился успешно.
+2. На VPS контейнеры `app`, `postgres`, `redis` запущены.
+3. `/health` возвращает `status=ok`.
+4. В логах нет новых критичных ошибок.
+5. Бот отвечает на `/start`.
+6. Если Mini App включена, вход и базовые сценарии Mini App работают из Telegram.
 
-1. Сделайте `push` в `dev`.
-2. Откройте вкладку `Actions`.
-3. Убедитесь, что workflow `Deploy Bot to VPS` не запускался.
+## Mini App
 
-## 4. Рекомендация по защите веток в GitHub
-
-В репозитории включите Branch protection rules:
-
-1. Для `main`:
-   - запрет прямого push (Require a pull request before merging);
-   - требовать успешные проверки перед merge.
-2. Для `dev`:
-   - по желанию оставить прямой push или тоже ограничить через PR.
-
-Это уменьшает риск случайного деплоя в прод.
+1. Mini App развивается в `dev` как параллельный канал к Telegram-боту.
+2. Бот и Mini App должны работать параллельно на каждом этапе.
+3. До релиза в `main` проверяются отсутствие регрессий bot-flow и корректность feature flags Mini App.
+4. В production `MINIAPP_DEV_LOGIN_ENABLED` всегда должен быть `false`.

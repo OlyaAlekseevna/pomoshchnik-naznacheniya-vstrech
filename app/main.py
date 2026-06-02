@@ -6,6 +6,7 @@ from typing import Any
 from aiogram.exceptions import TelegramAPIError
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -16,6 +17,8 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.repositories import get_google_oauth_credentials, upsert_google_oauth_credentials
 from app.db.session import create_session_factory
+from app.miniapp.router import MINIAPP_STATIC_DIR, miniapp_api_router, miniapp_web_router
+from app.miniapp.sessions import InMemoryMiniAppSessionStore
 from app.services.background_jobs import BackgroundJobsService
 from app.services.db import close_engine, create_engine, ping_database
 from app.services.google_calendar import (
@@ -189,6 +192,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     dispatcher.start_polling(
                         bot,
                         allowed_updates=dispatcher.resolve_used_update_types(),
+                        handle_signals=False,
                     )
                 )
                 polling_task.add_done_callback(_log_polling_task_result)
@@ -205,6 +209,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.dispatcher = dispatcher
         application.state.bot = bot
         application.state.polling_task = polling_task
+        application.state.miniapp_sessions = InMemoryMiniAppSessionStore()
         background_jobs = BackgroundJobsService(
             settings=app_settings,
             session_factory=session_factory,
@@ -239,6 +244,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.info("Application stopped.", extra={"event": "app_stopped"})
 
     app = FastAPI(title=app_settings.app_name, lifespan=lifespan)
+    if app_settings.miniapp_enabled:
+        if MINIAPP_STATIC_DIR.exists():
+            app.mount(
+                "/miniapp/static",
+                StaticFiles(directory=str(MINIAPP_STATIC_DIR)),
+                name="miniapp-static",
+            )
+        app.include_router(miniapp_api_router)
+        app.include_router(miniapp_web_router)
 
     @app.get("/")
     async def root() -> dict[str, str]:
