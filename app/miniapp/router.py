@@ -79,6 +79,10 @@ miniapp_api_router = APIRouter(prefix="/api/miniapp", tags=["miniapp"])
 miniapp_web_router = APIRouter(tags=["miniapp"])
 
 MINIAPP_STATIC_DIR = Path(__file__).resolve().parent / "static"
+MINIAPP_NO_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+}
 DEV_LOGIN_ALLOWED_ENVS = {"dev", "development", "local", "test"}
 
 
@@ -197,7 +201,7 @@ async def miniapp_index() -> FileResponse:
     index_path = MINIAPP_STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="Mini App index is missing")
-    return FileResponse(index_path)
+    return FileResponse(index_path, headers=MINIAPP_NO_CACHE_HEADERS)
 
 
 @miniapp_api_router.get("/health")

@@ -24,4 +24,8 @@ def test_miniapp_routes_available_when_enabled() -> None:
 
                 miniapp_page = client.get("/miniapp")
                 assert miniapp_page.status_code == 200
+                assert miniapp_page.headers["Cache-Control"] == (
+                    "no-store, no-cache, must-revalidate, max-age=0"
+                )
+                assert "/miniapp/static/app.js?v=20260602-telegram-auth" in miniapp_page.text
                 assert "Календарь встреч в Telegram" in miniapp_page.text

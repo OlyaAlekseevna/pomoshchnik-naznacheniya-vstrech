@@ -20,6 +20,7 @@ BOOK_TEXT = "Записаться на консультацию"
 MY_REQUESTS_TEXT = "Мои заявки"
 DELETE_MY_DATA_TEXT = "Удалить мои данные"
 OPEN_MINIAPP_TEXT = "Открыть Mini App"
+MINIAPP_URL_VERSION = "20260602-telegram-auth"
 CONSENT_TEXT = "Согласен(на)"
 SUBMIT_TEXT = "Отправить заявку"
 
@@ -42,7 +43,10 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
         [KeyboardButton(text=DELETE_MY_DATA_TEXT)],
     ]
     if settings.miniapp_enabled and settings.miniapp_domain:
-        miniapp_url = f"https://{settings.miniapp_domain.strip().rstrip('/')}/miniapp"
+        miniapp_url = (
+            f"https://{settings.miniapp_domain.strip().rstrip('/')}/miniapp"
+            f"?v={MINIAPP_URL_VERSION}"
+        )
         keyboard.insert(
             0,
             [KeyboardButton(text=OPEN_MINIAPP_TEXT, web_app=WebAppInfo(url=miniapp_url))],
