@@ -35,9 +35,12 @@ from app.bot.admin_service import (
 )
 from app.bot.keyboards import (
     ADMIN_DURATION_OPTIONS,
+    ADMIN_FORBIDDEN_PERIOD_OPTIONS,
     ADMIN_WEEKDAY_OPTIONS,
     admin_durations_keyboard,
     admin_forbidden_date_keyboard,
+    admin_forbidden_period_date_keyboard,
+    admin_forbidden_period_time_keyboard,
     admin_main_keyboard,
     admin_request_actions_keyboard,
     admin_settings_keyboard,
@@ -184,7 +187,7 @@ def _setting_prompt(setting_key: str) -> str:
             "Пример: 2026-06-01|выходной"
         ),
         "forbidden_period": (
-            "Введите запрещенный период. Причина опционально через '|'. "
+            "Ручной ввод запрещенного периода. Причина опционально через '|'. "
             "Пример: 2026-06-01 10:00 - 2026-06-01 14:00|технические работы"
         ),
         "new_request_text": "Введите новый шаблон уведомления администратору о заявке.",
@@ -240,6 +243,30 @@ def _today_for_timezone(timezone_name: str) -> date:
             extra={"event": "schedule_timezone_unknown", "timezone": timezone_name},
         )
         return date.today()
+
+
+def _forbidden_period_raw_value(
+    day: date,
+    preset_code: str,
+    workday_start: str,
+    workday_end: str,
+) -> str:
+    if preset_code == "workday":
+        start = workday_start
+        end = workday_end
+    else:
+        matching_option = next(
+            (
+                interval
+                for code, _, interval in ADMIN_FORBIDDEN_PERIOD_OPTIONS
+                if code == preset_code
+            ),
+            None,
+        )
+        if matching_option is None:
+            raise ValueError("Неизвестный вариант периода.")
+        start, end = matching_option
+    return f"{day.isoformat()} {start} - {day.isoformat()} {end}"
 
 
 @router.message(Command("admin"))
@@ -396,6 +423,24 @@ async def select_setting_to_edit(query: CallbackQuery, state: FSMContext) -> Non
                     "Если нужна дата вне списка, нажмите «Ввести вручную»."
                 ),
                 reply_markup=admin_forbidden_date_keyboard(today),
+            )
+        return
+
+    if setting_key == "forbidden_period":
+        session_factory = _require_session_factory()
+        async with session_factory() as session:
+            settings = await get_schedule_settings(session)
+        today = _today_for_timezone(settings.timezone)
+        await state.clear()
+        await _safe_callback(query, "Выберите дату периода.")
+        if query.message is not None:
+            await _safe_answer(
+                query.message,
+                (
+                    "Выберите дату для запрещенного периода кнопкой.\n"
+                    "После даты бот предложит варианты времени."
+                ),
+                reply_markup=admin_forbidden_period_date_keyboard(today),
             )
         return
 
@@ -730,6 +775,161 @@ async def cancel_forbidden_date_selection(query: CallbackQuery, state: FSMContex
         await _safe_answer(
             query.message,
             "Добавление запрещенной даты отменено.",
+            reply_markup=admin_settings_keyboard(),
+        )
+
+
+@router.callback_query(F.data.startswith("admin:forbid_period:date:"))
+async def select_forbidden_period_date(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    raw_day = (query.data or "").removeprefix("admin:forbid_period:date:")
+    try:
+        selected_day = date.fromisoformat(raw_day)
+    except ValueError:
+        await _safe_callback(query, "Некорректная дата.")
+        return
+
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        settings = await get_schedule_settings(session)
+
+    await state.clear()
+    await _safe_callback(query, "Выберите период.")
+    if query.message is not None:
+        edited = await _safe_edit_message(
+            query.message,
+            (
+                f"Дата: {selected_day:%d.%m.%Y}.\n"
+                "Выберите, какой период запретить."
+            ),
+            reply_markup=admin_forbidden_period_time_keyboard(
+                selected_day,
+                settings.workday_start,
+                settings.workday_end,
+            ),
+        )
+        if not edited:
+            await _safe_answer(
+                query.message,
+                (
+                    f"Дата: {selected_day:%d.%m.%Y}.\n"
+                    "Выберите, какой период запретить."
+                ),
+                reply_markup=admin_forbidden_period_time_keyboard(
+                    selected_day,
+                    settings.workday_start,
+                    settings.workday_end,
+                ),
+            )
+
+
+@router.callback_query(F.data.startswith("admin:forbid_period:time:"))
+async def add_forbidden_period_by_button(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    parts = (query.data or "").split(":")
+    if len(parts) != 5:
+        await _safe_callback(query, "Некорректный период.")
+        return
+    _, _, _, raw_day, preset_code = parts
+    try:
+        selected_day = date.fromisoformat(raw_day)
+    except ValueError:
+        await _safe_callback(query, "Некорректная дата.")
+        return
+
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        settings = await get_schedule_settings(session)
+        try:
+            raw_value = _forbidden_period_raw_value(
+                day=selected_day,
+                preset_code=preset_code,
+                workday_start=settings.workday_start.strftime("%H:%M"),
+                workday_end=settings.workday_end.strftime("%H:%M"),
+            )
+            summary_text = await apply_setting_update(
+                session=session,
+                admin_telegram_id=query.from_user.id,
+                setting_key="forbidden_period",
+                raw_value=raw_value,
+            )
+        except Exception as error:
+            await _safe_callback(query, "Некорректный период.")
+            if query.message is not None:
+                await _safe_answer(query.message, f"Некорректное значение: {error}")
+            return
+        await session.commit()
+
+    logger.info(
+        "Admin added forbidden period using buttons.",
+        extra={
+            "event": "admin_forbidden_period_added",
+            "telegram_user_id": query.from_user.id,
+        },
+    )
+    await state.clear()
+    await _safe_callback(query, "Период добавлен.")
+    if query.message is not None:
+        await _safe_answer(
+            query.message,
+            f"Запрещенный период добавлен: {raw_value}.\n\n{summary_text}",
+            reply_markup=admin_settings_keyboard(),
+        )
+
+
+@router.callback_query(F.data == "admin:forbid_period:dates")
+async def back_to_forbidden_period_dates(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        settings = await get_schedule_settings(session)
+    today = _today_for_timezone(settings.timezone)
+    await state.clear()
+    await _safe_callback(query, "Выберите дату.")
+    if query.message is not None:
+        edited = await _safe_edit_message(
+            query.message,
+            (
+                "Выберите дату для запрещенного периода кнопкой.\n"
+                "После даты бот предложит варианты времени."
+            ),
+            reply_markup=admin_forbidden_period_date_keyboard(today),
+        )
+        if not edited:
+            await _safe_answer(
+                query.message,
+                (
+                    "Выберите дату для запрещенного периода кнопкой.\n"
+                    "После даты бот предложит варианты времени."
+                ),
+                reply_markup=admin_forbidden_period_date_keyboard(today),
+            )
+
+
+@router.callback_query(F.data == "admin:forbid_period:manual")
+async def enter_forbidden_period_manually(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.set_state(AdminFlowState.editing_setting_value)
+    await state.update_data(admin_setting_key="forbidden_period")
+    await _safe_callback(query, "Отправьте период.")
+    if query.message is not None:
+        await _safe_answer(query.message, _setting_prompt("forbidden_period"))
+
+
+@router.callback_query(F.data == "admin:forbid_period:cancel")
+async def cancel_forbidden_period_selection(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.clear()
+    await _safe_callback(query, "Добавление периода отменено.")
+    if query.message is not None:
+        await _safe_answer(
+            query.message,
+            "Добавление запрещенного периода отменено.",
             reply_markup=admin_settings_keyboard(),
         )
 
