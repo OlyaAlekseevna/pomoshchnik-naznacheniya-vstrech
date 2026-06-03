@@ -20,7 +20,7 @@ BOOK_TEXT = "Записаться на консультацию"
 MY_REQUESTS_TEXT = "Мои заявки"
 DELETE_MY_DATA_TEXT = "Удалить мои данные"
 OPEN_MINIAPP_TEXT = "Открыть Mini App"
-MINIAPP_URL_VERSION = "20260602-telegram-auth"
+MINIAPP_URL_VERSION = "20260603-schedule-buttons"
 CONSENT_TEXT = "Согласен(на)"
 SUBMIT_TEXT = "Отправить заявку"
 
