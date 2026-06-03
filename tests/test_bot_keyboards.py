@@ -1,9 +1,14 @@
+from datetime import date
+
 import pytest
 
 from app.bot.keyboards import (
     BOOK_TEXT,
     OPEN_MINIAPP_TEXT,
+    admin_durations_keyboard,
+    admin_forbidden_date_keyboard,
     admin_working_days_keyboard,
+    admin_working_hours_keyboard,
     main_menu_keyboard,
 )
 from app.core.config import get_settings
@@ -50,3 +55,49 @@ def test_admin_working_days_keyboard_marks_selected_days() -> None:
     assert "✓ ПТ" in button_texts
     assert "Сохранить" in button_texts
     assert "Отмена" in button_texts
+
+
+def test_admin_working_hours_keyboard_contains_presets_and_manual() -> None:
+    keyboard = admin_working_hours_keyboard()
+    button_texts = [button.text for row in keyboard.inline_keyboard for button in row]
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+
+    assert "09:00-18:00" in button_texts
+    assert "10:00-19:00" in button_texts
+    assert "Ввести вручную" in button_texts
+    assert "Отмена" in button_texts
+    assert "admin:hours:set:09:00-18:00" in callbacks
+    assert "admin:hours:manual" in callbacks
+    assert "admin:hours:cancel" in callbacks
+
+
+def test_admin_durations_keyboard_marks_selected_options() -> None:
+    keyboard = admin_durations_keyboard([30, 60])
+    button_texts = [button.text for row in keyboard.inline_keyboard for button in row]
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+
+    assert "  15 мин" in button_texts
+    assert "✓ 30 мин" in button_texts
+    assert "  45 мин" in button_texts
+    assert "✓ 60 мин" in button_texts
+    assert "Сохранить" in button_texts
+    assert "Отмена" in button_texts
+    assert "admin:durations:toggle:30" in callbacks
+    assert "admin:durations:save" in callbacks
+    assert "admin:durations:cancel" in callbacks
+
+
+def test_admin_forbidden_date_keyboard_uses_next_dates() -> None:
+    keyboard = admin_forbidden_date_keyboard(date(2026, 6, 3), days_count=3)
+    button_texts = [button.text for row in keyboard.inline_keyboard for button in row]
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+
+    assert "Ср 03.06" in button_texts
+    assert "Чт 04.06" in button_texts
+    assert "Пт 05.06" in button_texts
+    assert "Ввести вручную" in button_texts
+    assert "Отмена" in button_texts
+    assert "admin:forbid_date:add:2026-06-03" in callbacks
+    assert "admin:forbid_date:add:2026-06-05" in callbacks
+    assert "admin:forbid_date:manual" in callbacks
+    assert "admin:forbid_date:cancel" in callbacks

@@ -44,6 +44,17 @@ ADMIN_WEEKDAY_OPTIONS = (
     ("sunday", "ВС"),
 )
 
+ADMIN_WORKING_HOURS_OPTIONS = (
+    "09:00-17:00",
+    "09:00-18:00",
+    "10:00-18:00",
+    "10:00-19:00",
+    "11:00-19:00",
+    "12:00-20:00",
+)
+
+ADMIN_DURATION_OPTIONS = (15, 30, 45, 60, 90, 120)
+
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     settings = get_settings()
@@ -305,6 +316,85 @@ def admin_working_days_keyboard(selected_days: list[str]) -> InlineKeyboardMarku
         [
             InlineKeyboardButton(text="Сохранить", callback_data="admin:workdays:save"),
             InlineKeyboardButton(text="Отмена", callback_data="admin:workdays:cancel"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_working_hours_keyboard() -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    current_row: list[InlineKeyboardButton] = []
+    for interval in ADMIN_WORKING_HOURS_OPTIONS:
+        current_row.append(
+            InlineKeyboardButton(
+                text=interval,
+                callback_data=f"admin:hours:set:{interval}",
+            )
+        )
+        if len(current_row) == 2:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+    rows.append(
+        [
+            InlineKeyboardButton(text="Ввести вручную", callback_data="admin:hours:manual"),
+            InlineKeyboardButton(text="Отмена", callback_data="admin:hours:cancel"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_durations_keyboard(selected_durations: list[int]) -> InlineKeyboardMarkup:
+    selected = set(selected_durations)
+    rows: list[list[InlineKeyboardButton]] = []
+    current_row: list[InlineKeyboardButton] = []
+    for duration in ADMIN_DURATION_OPTIONS:
+        marker = "✓" if duration in selected else " "
+        current_row.append(
+            InlineKeyboardButton(
+                text=f"{marker} {duration} мин",
+                callback_data=f"admin:durations:toggle:{duration}",
+            )
+        )
+        if len(current_row) == 3:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+    rows.append(
+        [
+            InlineKeyboardButton(text="Сохранить", callback_data="admin:durations:save"),
+            InlineKeyboardButton(text="Отмена", callback_data="admin:durations:cancel"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_forbidden_date_keyboard(today: date, days_count: int = 14) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    current_row: list[InlineKeyboardButton] = []
+    for offset in range(days_count):
+        day = date.fromordinal(today.toordinal() + offset)
+        label = f"{_WEEKDAY_LABELS[day.weekday()]} {day:%d.%m}"
+        current_row.append(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"admin:forbid_date:add:{day.isoformat()}",
+            )
+        )
+        if len(current_row) == 2:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Ввести вручную",
+                callback_data="admin:forbid_date:manual",
+            ),
+            InlineKeyboardButton(text="Отмена", callback_data="admin:forbid_date:cancel"),
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
