@@ -286,8 +286,8 @@ def _parse_working_days(raw_value: str) -> list[str]:
     if not parsed or unknown:
         unknown_suffix = f" Не распознано: {', '.join(unknown)}." if unknown else ""
         raise ValueError(
-            "Используйте дни недели через запятую на русском или английском. "
-            "Пример: понедельник,вторник,среда или monday,tuesday,wednesday."
+            "Используйте дни недели через запятую на русском. "
+            "Пример: понедельник,вторник,среда,четверг,пятница."
             f"{unknown_suffix}"
         )
     return parsed

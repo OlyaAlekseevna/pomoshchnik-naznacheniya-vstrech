@@ -1,6 +1,11 @@
 import pytest
 
-from app.bot.keyboards import BOOK_TEXT, OPEN_MINIAPP_TEXT, main_menu_keyboard
+from app.bot.keyboards import (
+    BOOK_TEXT,
+    OPEN_MINIAPP_TEXT,
+    admin_working_days_keyboard,
+    main_menu_keyboard,
+)
 from app.core.config import get_settings
 
 
@@ -33,3 +38,15 @@ def test_main_menu_adds_webapp_button_when_miniapp_domain_configured(monkeypatch
     assert first_button.web_app.url == (
         "https://calendar.monvera.su/miniapp?v=20260602-telegram-auth"
     )
+
+
+def test_admin_working_days_keyboard_marks_selected_days() -> None:
+    keyboard = admin_working_days_keyboard(["monday", "wednesday", "friday"])
+    button_texts = [button.text for row in keyboard.inline_keyboard for button in row]
+
+    assert "✓ ПН" in button_texts
+    assert "  ВТ" in button_texts
+    assert "✓ СР" in button_texts
+    assert "✓ ПТ" in button_texts
+    assert "Сохранить" in button_texts
+    assert "Отмена" in button_texts

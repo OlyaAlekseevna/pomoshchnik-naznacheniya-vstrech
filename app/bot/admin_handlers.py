@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.admin_service import (
     ALTERNATIVE_REJECTION_REASON,
+    WEEKDAY_LABELS_RU,
     SlotUnavailableOnApprovalError,
     apply_setting_update,
     approve_request_with_calendar,
@@ -31,9 +32,11 @@ from app.bot.admin_service import (
     toggle_user_block,
 )
 from app.bot.keyboards import (
+    ADMIN_WEEKDAY_OPTIONS,
     admin_main_keyboard,
     admin_request_actions_keyboard,
     admin_settings_keyboard,
+    admin_working_days_keyboard,
 )
 from app.bot.states import AdminFlowState
 from app.core.config import get_settings
@@ -78,6 +81,21 @@ async def _safe_answer(message: Message, text: str, **kwargs) -> None:
                 "telegram_user_id": message.from_user.id if message.from_user else None,
             },
         )
+
+
+async def _safe_edit_message(message: Message, text: str, **kwargs) -> bool:
+    try:
+        await message.edit_text(text, **kwargs)
+    except TelegramAPIError:
+        logger.exception(
+            "Failed to edit admin message.",
+            extra={
+                "event": "message_edit_error",
+                "telegram_user_id": message.from_user.id if message.from_user else None,
+            },
+        )
+        return False
+    return True
 
 
 async def _safe_callback(query: CallbackQuery, text: str) -> None:
@@ -146,8 +164,8 @@ def _extract_request_id(raw_callback_data: str) -> int:
 def _setting_prompt(setting_key: str) -> str:
     prompts = {
         "working_days": (
-            "Введите дни недели через запятую. "
-            "Можно по-русски: понедельник,вторник,среда или по-английски: monday,tuesday,..."
+            "Выберите рабочие дни кнопками в списке. "
+            "Ручной ввод для этой настройки больше не требуется."
         ),
         "working_hours": "Введите рабочие часы в формате HH:MM-HH:MM",
         "durations": "Введите длительности в минутах через запятую. Пример: 15,30,45,90",
@@ -166,6 +184,25 @@ def _setting_prompt(setting_key: str) -> str:
         "new_request_text": "Введите новый шаблон уведомления администратору о заявке.",
     }
     return prompts.get(setting_key, "Введите значение:")
+
+
+def _ordered_working_days(days: list[str]) -> list[str]:
+    known_order = [day for day, _ in ADMIN_WEEKDAY_OPTIONS]
+    selected = set(days)
+    return [day for day in known_order if day in selected]
+
+
+def _working_days_selection_text(selected_days: list[str]) -> str:
+    ordered_days = _ordered_working_days(selected_days)
+    if ordered_days:
+        selected_text = ", ".join(WEEKDAY_LABELS_RU[day] for day in ordered_days)
+    else:
+        selected_text = "пока ничего не выбрано"
+    return (
+        "Выберите рабочие дни кнопками.\n"
+        f"Сейчас выбрано: {selected_text}.\n"
+        "Нажмите день, чтобы включить или выключить его, затем нажмите «Сохранить»."
+    )
 
 
 @router.message(Command("admin"))
@@ -247,11 +284,129 @@ async def select_setting_to_edit(query: CallbackQuery, state: FSMContext) -> Non
     if not await _admin_guard_for_callback(query):
         return
     setting_key = query.data.split(":", maxsplit=2)[2]
+    if setting_key == "working_days":
+        session_factory = _require_session_factory()
+        async with session_factory() as session:
+            settings = await get_schedule_settings(session)
+        selected_days = _ordered_working_days(settings.working_days)
+        await state.set_state(AdminFlowState.editing_setting_value)
+        await state.update_data(
+            admin_setting_key=setting_key,
+            admin_working_days=selected_days,
+        )
+        await _safe_callback(query, "Выберите рабочие дни.")
+        if query.message is not None:
+            await _safe_answer(
+                query.message,
+                _working_days_selection_text(selected_days),
+                reply_markup=admin_working_days_keyboard(selected_days),
+            )
+        return
+
     await state.set_state(AdminFlowState.editing_setting_value)
     await state.update_data(admin_setting_key=setting_key)
     await _safe_callback(query, "Отправьте новое значение.")
     if query.message is not None:
         await _safe_answer(query.message, _setting_prompt(setting_key))
+
+
+@router.callback_query(F.data.startswith("admin:workdays:toggle:"))
+async def toggle_working_day(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    day_value = query.data.rsplit(":", maxsplit=1)[1]
+    allowed_days = {day for day, _ in ADMIN_WEEKDAY_OPTIONS}
+    if day_value not in allowed_days:
+        await _safe_callback(query, "Неизвестный день недели.")
+        return
+
+    data = await state.get_data()
+    selected_days = _ordered_working_days(list(data.get("admin_working_days", [])))
+    if day_value in selected_days:
+        selected_days = [day for day in selected_days if day != day_value]
+    else:
+        selected_days.append(day_value)
+        selected_days = _ordered_working_days(selected_days)
+
+    await state.set_state(AdminFlowState.editing_setting_value)
+    await state.update_data(
+        admin_setting_key="working_days",
+        admin_working_days=selected_days,
+    )
+    await _safe_callback(query, "Выбор обновлен.")
+    if query.message is not None:
+        edited = await _safe_edit_message(
+            query.message,
+            _working_days_selection_text(selected_days),
+            reply_markup=admin_working_days_keyboard(selected_days),
+        )
+        if not edited:
+            await _safe_answer(
+                query.message,
+                _working_days_selection_text(selected_days),
+                reply_markup=admin_working_days_keyboard(selected_days),
+            )
+
+
+@router.callback_query(F.data == "admin:workdays:save")
+async def save_working_days(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    data = await state.get_data()
+    selected_days = _ordered_working_days(list(data.get("admin_working_days", [])))
+    if not selected_days:
+        await _safe_callback(query, "Выберите хотя бы один день.")
+        if query.message is not None:
+            edited = await _safe_edit_message(
+                query.message,
+                _working_days_selection_text(selected_days),
+                reply_markup=admin_working_days_keyboard(selected_days),
+            )
+            if not edited:
+                await _safe_answer(
+                    query.message,
+                    _working_days_selection_text(selected_days),
+                    reply_markup=admin_working_days_keyboard(selected_days),
+                )
+        return
+
+    raw_value = ",".join(WEEKDAY_LABELS_RU[day] for day in selected_days)
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        summary_text = await apply_setting_update(
+            session=session,
+            admin_telegram_id=query.from_user.id,
+            setting_key="working_days",
+            raw_value=raw_value,
+        )
+        await session.commit()
+
+    logger.info(
+        "Admin changed working days using buttons.",
+        extra={
+            "event": "admin_setting_updated",
+            "telegram_user_id": query.from_user.id,
+            "setting_key": "working_days",
+        },
+    )
+    await state.clear()
+    await _safe_callback(query, "Рабочие дни сохранены.")
+    if query.message is not None:
+        await _safe_answer(query.message, summary_text, reply_markup=admin_settings_keyboard())
+
+
+@router.callback_query(F.data == "admin:workdays:cancel")
+async def cancel_working_days_selection(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.clear()
+    await _safe_callback(query, "Изменение рабочих дней отменено.")
+    if query.message is not None:
+        await _safe_answer(
+            query.message,
+            "Изменение рабочих дней отменено.",
+            reply_markup=admin_settings_keyboard(),
+        )
 
 
 @router.message(AdminFlowState.editing_setting_value)
