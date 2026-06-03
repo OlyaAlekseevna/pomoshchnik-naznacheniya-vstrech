@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import date, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
@@ -32,11 +34,15 @@ from app.bot.admin_service import (
     toggle_user_block,
 )
 from app.bot.keyboards import (
+    ADMIN_DURATION_OPTIONS,
     ADMIN_WEEKDAY_OPTIONS,
+    admin_durations_keyboard,
+    admin_forbidden_date_keyboard,
     admin_main_keyboard,
     admin_request_actions_keyboard,
     admin_settings_keyboard,
     admin_working_days_keyboard,
+    admin_working_hours_keyboard,
 )
 from app.bot.states import AdminFlowState
 from app.core.config import get_settings
@@ -205,6 +211,37 @@ def _working_days_selection_text(selected_days: list[str]) -> str:
     )
 
 
+def _ordered_durations(durations: list[int]) -> list[int]:
+    selected = {int(duration) for duration in durations}
+    known = [duration for duration in ADMIN_DURATION_OPTIONS if duration in selected]
+    extras = sorted(duration for duration in selected if duration not in ADMIN_DURATION_OPTIONS)
+    return known + extras
+
+
+def _durations_selection_text(selected_durations: list[int]) -> str:
+    ordered_durations = _ordered_durations(selected_durations)
+    if ordered_durations:
+        selected_text = ", ".join(f"{duration} мин" for duration in ordered_durations)
+    else:
+        selected_text = "пока ничего не выбрано"
+    return (
+        "Выберите длительности консультаций кнопками.\n"
+        f"Сейчас выбрано: {selected_text}.\n"
+        "Нажмите длительность, чтобы включить или выключить ее, затем нажмите «Сохранить»."
+    )
+
+
+def _today_for_timezone(timezone_name: str) -> date:
+    try:
+        return datetime.now(ZoneInfo(timezone_name)).date()
+    except ZoneInfoNotFoundError:
+        logger.warning(
+            "Schedule timezone is unknown, falling back to local date.",
+            extra={"event": "schedule_timezone_unknown", "timezone": timezone_name},
+        )
+        return date.today()
+
+
 @router.message(Command("admin"))
 async def open_admin_panel(message: Message, state: FSMContext) -> None:
     if not await _admin_guard_for_message(message):
@@ -300,6 +337,65 @@ async def select_setting_to_edit(query: CallbackQuery, state: FSMContext) -> Non
                 query.message,
                 _working_days_selection_text(selected_days),
                 reply_markup=admin_working_days_keyboard(selected_days),
+            )
+        return
+
+    if setting_key == "working_hours":
+        session_factory = _require_session_factory()
+        async with session_factory() as session:
+            settings = await get_schedule_settings(session)
+        current_interval = (
+            f"{settings.workday_start.strftime('%H:%M')}-"
+            f"{settings.workday_end.strftime('%H:%M')}"
+        )
+        await state.clear()
+        await _safe_callback(query, "Выберите рабочие часы.")
+        if query.message is not None:
+            await _safe_answer(
+                query.message,
+                (
+                    "Выберите рабочие часы кнопкой.\n"
+                    f"Сейчас: {current_interval}.\n"
+                    "Если нужен другой интервал, нажмите «Ввести вручную»."
+                ),
+                reply_markup=admin_working_hours_keyboard(),
+            )
+        return
+
+    if setting_key == "durations":
+        session_factory = _require_session_factory()
+        async with session_factory() as session:
+            settings = await get_schedule_settings(session)
+        selected_durations = _ordered_durations(settings.available_durations_minutes)
+        await state.set_state(AdminFlowState.editing_setting_value)
+        await state.update_data(
+            admin_setting_key=setting_key,
+            admin_durations=selected_durations,
+        )
+        await _safe_callback(query, "Выберите длительности.")
+        if query.message is not None:
+            await _safe_answer(
+                query.message,
+                _durations_selection_text(selected_durations),
+                reply_markup=admin_durations_keyboard(selected_durations),
+            )
+        return
+
+    if setting_key == "forbidden_date":
+        session_factory = _require_session_factory()
+        async with session_factory() as session:
+            settings = await get_schedule_settings(session)
+        today = _today_for_timezone(settings.timezone)
+        await state.clear()
+        await _safe_callback(query, "Выберите дату.")
+        if query.message is not None:
+            await _safe_answer(
+                query.message,
+                (
+                    "Выберите запрещенную дату кнопкой.\n"
+                    "Если нужна дата вне списка, нажмите «Ввести вручную»."
+                ),
+                reply_markup=admin_forbidden_date_keyboard(today),
             )
         return
 
@@ -405,6 +501,235 @@ async def cancel_working_days_selection(query: CallbackQuery, state: FSMContext)
         await _safe_answer(
             query.message,
             "Изменение рабочих дней отменено.",
+            reply_markup=admin_settings_keyboard(),
+        )
+
+
+@router.callback_query(F.data.startswith("admin:hours:set:"))
+async def set_working_hours(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    interval = (query.data or "").removeprefix("admin:hours:set:")
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        try:
+            summary_text = await apply_setting_update(
+                session=session,
+                admin_telegram_id=query.from_user.id,
+                setting_key="working_hours",
+                raw_value=interval,
+            )
+        except Exception as error:
+            await _safe_callback(query, "Некорректные рабочие часы.")
+            if query.message is not None:
+                await _safe_answer(query.message, f"Некорректное значение: {error}")
+            return
+        await session.commit()
+
+    logger.info(
+        "Admin changed working hours using buttons.",
+        extra={
+            "event": "admin_setting_updated",
+            "telegram_user_id": query.from_user.id,
+            "setting_key": "working_hours",
+        },
+    )
+    await state.clear()
+    await _safe_callback(query, "Рабочие часы сохранены.")
+    if query.message is not None:
+        await _safe_answer(query.message, summary_text, reply_markup=admin_settings_keyboard())
+
+
+@router.callback_query(F.data == "admin:hours:manual")
+async def enter_working_hours_manually(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.set_state(AdminFlowState.editing_setting_value)
+    await state.update_data(admin_setting_key="working_hours")
+    await _safe_callback(query, "Отправьте интервал.")
+    if query.message is not None:
+        await _safe_answer(query.message, _setting_prompt("working_hours"))
+
+
+@router.callback_query(F.data == "admin:hours:cancel")
+async def cancel_working_hours_selection(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.clear()
+    await _safe_callback(query, "Изменение рабочих часов отменено.")
+    if query.message is not None:
+        await _safe_answer(
+            query.message,
+            "Изменение рабочих часов отменено.",
+            reply_markup=admin_settings_keyboard(),
+        )
+
+
+@router.callback_query(F.data.startswith("admin:durations:toggle:"))
+async def toggle_duration(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    try:
+        duration_value = int((query.data or "").rsplit(":", maxsplit=1)[1])
+    except (IndexError, ValueError):
+        await _safe_callback(query, "Неизвестная длительность.")
+        return
+    if duration_value not in ADMIN_DURATION_OPTIONS:
+        await _safe_callback(query, "Неизвестная длительность.")
+        return
+
+    data = await state.get_data()
+    raw_selected = data.get("admin_durations", [])
+    selected_durations = _ordered_durations([int(duration) for duration in raw_selected])
+    if duration_value in selected_durations:
+        selected_durations = [
+            duration for duration in selected_durations if duration != duration_value
+        ]
+    else:
+        selected_durations.append(duration_value)
+        selected_durations = _ordered_durations(selected_durations)
+
+    await state.set_state(AdminFlowState.editing_setting_value)
+    await state.update_data(
+        admin_setting_key="durations",
+        admin_durations=selected_durations,
+    )
+    await _safe_callback(query, "Выбор обновлен.")
+    if query.message is not None:
+        edited = await _safe_edit_message(
+            query.message,
+            _durations_selection_text(selected_durations),
+            reply_markup=admin_durations_keyboard(selected_durations),
+        )
+        if not edited:
+            await _safe_answer(
+                query.message,
+                _durations_selection_text(selected_durations),
+                reply_markup=admin_durations_keyboard(selected_durations),
+            )
+
+
+@router.callback_query(F.data == "admin:durations:save")
+async def save_durations(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    data = await state.get_data()
+    raw_selected = data.get("admin_durations", [])
+    selected_durations = _ordered_durations([int(duration) for duration in raw_selected])
+    if not selected_durations:
+        await _safe_callback(query, "Выберите хотя бы одну длительность.")
+        if query.message is not None:
+            edited = await _safe_edit_message(
+                query.message,
+                _durations_selection_text(selected_durations),
+                reply_markup=admin_durations_keyboard(selected_durations),
+            )
+            if not edited:
+                await _safe_answer(
+                    query.message,
+                    _durations_selection_text(selected_durations),
+                    reply_markup=admin_durations_keyboard(selected_durations),
+                )
+        return
+
+    raw_value = ",".join(str(duration) for duration in selected_durations)
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        summary_text = await apply_setting_update(
+            session=session,
+            admin_telegram_id=query.from_user.id,
+            setting_key="durations",
+            raw_value=raw_value,
+        )
+        await session.commit()
+
+    logger.info(
+        "Admin changed durations using buttons.",
+        extra={
+            "event": "admin_setting_updated",
+            "telegram_user_id": query.from_user.id,
+            "setting_key": "durations",
+        },
+    )
+    await state.clear()
+    await _safe_callback(query, "Длительности сохранены.")
+    if query.message is not None:
+        await _safe_answer(query.message, summary_text, reply_markup=admin_settings_keyboard())
+
+
+@router.callback_query(F.data == "admin:durations:cancel")
+async def cancel_durations_selection(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.clear()
+    await _safe_callback(query, "Изменение длительностей отменено.")
+    if query.message is not None:
+        await _safe_answer(
+            query.message,
+            "Изменение длительностей отменено.",
+            reply_markup=admin_settings_keyboard(),
+        )
+
+
+@router.callback_query(F.data.startswith("admin:forbid_date:add:"))
+async def add_forbidden_date_by_button(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    day_value = (query.data or "").removeprefix("admin:forbid_date:add:")
+    session_factory = _require_session_factory()
+    async with session_factory() as session:
+        try:
+            summary_text = await apply_setting_update(
+                session=session,
+                admin_telegram_id=query.from_user.id,
+                setting_key="forbidden_date",
+                raw_value=day_value,
+            )
+        except Exception as error:
+            await _safe_callback(query, "Некорректная дата.")
+            if query.message is not None:
+                await _safe_answer(query.message, f"Некорректное значение: {error}")
+            return
+        await session.commit()
+
+    logger.info(
+        "Admin added forbidden date using buttons.",
+        extra={
+            "event": "admin_forbidden_date_added",
+            "telegram_user_id": query.from_user.id,
+        },
+    )
+    await state.clear()
+    await _safe_callback(query, "Дата добавлена.")
+    if query.message is not None:
+        await _safe_answer(
+            query.message,
+            f"Запрещенная дата {day_value} добавлена.\n\n{summary_text}",
+            reply_markup=admin_settings_keyboard(),
+        )
+
+
+@router.callback_query(F.data == "admin:forbid_date:manual")
+async def enter_forbidden_date_manually(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.set_state(AdminFlowState.editing_setting_value)
+    await state.update_data(admin_setting_key="forbidden_date")
+    await _safe_callback(query, "Отправьте дату.")
+    if query.message is not None:
+        await _safe_answer(query.message, _setting_prompt("forbidden_date"))
+
+
+@router.callback_query(F.data == "admin:forbid_date:cancel")
+async def cancel_forbidden_date_selection(query: CallbackQuery, state: FSMContext) -> None:
+    if not await _admin_guard_for_callback(query):
+        return
+    await state.clear()
+    await _safe_callback(query, "Добавление даты отменено.")
+    if query.message is not None:
+        await _safe_answer(
+            query.message,
+            "Добавление запрещенной даты отменено.",
             reply_markup=admin_settings_keyboard(),
         )
 
