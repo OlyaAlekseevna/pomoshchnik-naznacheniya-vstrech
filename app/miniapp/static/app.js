@@ -730,7 +730,41 @@ const resetSlotSelection = (placeholder = "Сначала выберите де�
   slotSelect.append(option);
 };
 
+const normalizeDurationValues = (durations) => {
+  const values = (Array.isArray(durations) ? durations : [])
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item) && item > 0);
+  return values.length > 0 ? values : [30];
+};
+
+const hasSelectableDurationOption = () =>
+  Array.from(durationInput.options).some((option) => Number(option.value || 0) > 0);
+
+const fillDurationOptions = (durations) => {
+  const currentValue = Number(durationInput.value || 0);
+  const values = normalizeDurationValues(durations);
+  durationInput.innerHTML = "";
+
+  values.forEach((value) => {
+    const option = document.createElement("option");
+    option.value = String(value);
+    option.textContent = String(value);
+    if (value === currentValue) {
+      option.selected = true;
+    }
+    durationInput.append(option);
+  });
+
+  if (!durationInput.value) {
+    durationInput.value = String(values[0]);
+  }
+};
+
 const setBookingStepState = (hasDateSelected) => {
+  if (hasDateSelected && !hasSelectableDurationOption()) {
+    fillDurationOptions(bookingConfig?.available_durations_minutes);
+  }
+
   durationInput.disabled = !hasDateSelected;
   if (bookingSlotsButton) {
     bookingSlotsButton.disabled = !hasDateSelected;
@@ -794,31 +828,7 @@ const parseSlotLabel = (slotEncoded) => {
 };
 
 const setDurationOptions = (durations) => {
-  const currentValue = Number(durationInput.value || 0);
-  durationInput.innerHTML = "";
-
-  if (!durations || durations.length === 0) {
-    const option = document.createElement("option");
-    option.value = "30";
-    option.textContent = "30";
-    durationInput.append(option);
-    return;
-  }
-
-  durations.forEach((value) => {
-    const option = document.createElement("option");
-    option.value = String(value);
-    option.textContent = String(value);
-    if (value === currentValue) {
-      option.selected = true;
-    }
-    durationInput.append(option);
-  });
-
-  if (!durationInput.value) {
-    durationInput.value = String(durations[0]);
-  }
-
+  fillDurationOptions(durations);
   setBookingStepState(Boolean(meetingDateInput.value));
 };
 
@@ -1076,6 +1086,7 @@ const loadBookingSlots = async ({ logEvent = true, preserveSelection = true } = 
     return null;
   }
 
+  setBookingStepState(true);
   const durationMinutes = Number(durationInput.value || 0);
   if (!durationMinutes) {
     setBookingStatus("Сначала выберите длительность встречи.", "error");
