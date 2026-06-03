@@ -192,6 +192,38 @@ body {
   margin-top: 2px;
 }
 
+.settings-date-options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.setting-chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
+  gap: 8px;
+}
+
+.setting-chip-btn {
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 9px 10px;
+  background: rgba(110, 126, 183, 0.16);
+  color: var(--text-main);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.setting-chip-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(42, 53, 96, 0.13);
+}
+
+.setting-chip-btn.active {
+  background: linear-gradient(130deg, var(--strict-1), var(--strict-2));
+  color: #fff;
+  border-color: transparent;
+}
+
 .setting-day-btn {
   background: rgba(110, 126, 183, 0.16);
 }

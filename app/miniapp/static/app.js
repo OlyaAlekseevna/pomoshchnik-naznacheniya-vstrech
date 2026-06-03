@@ -32,6 +32,11 @@ const settingValueInput = document.getElementById("settingValue");
 const settingValueHint = document.getElementById("settingValueHint");
 const workingDaysCalendarEditor = document.getElementById("workingDaysCalendarEditor");
 const workingHoursEditor = document.getElementById("workingHoursEditor");
+const workingHoursPresets = document.getElementById("workingHoursPresets");
+const settingsDurationsEditor = document.getElementById("settingsDurationsEditor");
+const settingsDurationOptions = document.getElementById("settingsDurationOptions");
+const forbiddenDateEditor = document.getElementById("forbiddenDateEditor");
+const forbiddenDateOptions = document.getElementById("forbiddenDateOptions");
 const settingsWeekDaysContainer = document.getElementById("settingsWeekDays");
 const workdayStartTimeInput = document.getElementById("workdayStartTime");
 const workdayEndTimeInput = document.getElementById("workdayEndTime");
@@ -47,6 +52,7 @@ let currentRole = "guest";
 let bookingConfig = null;
 let bookingPageOffset = 0;
 let selectedWorkingDays = new Set();
+let selectedAdminDurations = new Set();
 
 const telegramWebApp = window.Telegram?.WebApp || null;
 const extractTelegramInitData = () => {
@@ -71,6 +77,17 @@ const adminWeekdayOptions = [
   { value: "saturday", label: "СБ", icon: "☕" },
   { value: "sunday", label: "ВС", icon: "🌞" },
 ];
+
+const adminWorkingHourOptions = [
+  "09:00-17:00",
+  "09:00-18:00",
+  "10:00-18:00",
+  "10:00-19:00",
+  "11:00-19:00",
+  "12:00-20:00",
+];
+
+const adminDurationOptions = [15, 30, 45, 60, 90, 120];
 
 const write = (title, payload) => {
   output.textContent = [
@@ -309,6 +326,130 @@ const renderWorkingDaysCalendar = () => {
   });
 };
 
+const renderWorkingHoursPresets = () => {
+  if (!workingHoursPresets) {
+    return;
+  }
+
+  const currentValue = String(settingValueInput?.value || "").trim();
+  workingHoursPresets.innerHTML = "";
+  adminWorkingHourOptions.forEach((interval) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "setting-chip-btn";
+    button.textContent = interval;
+    if (currentValue === interval) {
+      button.classList.add("active");
+    }
+    button.addEventListener("click", () => {
+      const [start, end] = interval.split("-");
+      if (workdayStartTimeInput) {
+        workdayStartTimeInput.value = start;
+      }
+      if (workdayEndTimeInput) {
+        workdayEndTimeInput.value = end;
+      }
+      syncSettingValueFromStructuredEditors();
+      renderWorkingHoursPresets();
+      setAdminStatus(`Выбраны рабочие часы: ${interval}. Нажмите «Обновить настройку».`, "info");
+    });
+    workingHoursPresets.append(button);
+  });
+};
+
+const sortDurations = (durations) => {
+  const durationSet = new Set(
+    (Array.isArray(durations) ? durations : [])
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item > 0)
+  );
+  const knownDurations = adminDurationOptions.filter((item) => durationSet.has(item));
+  const extraDurations = Array.from(durationSet)
+    .filter((item) => !adminDurationOptions.includes(item))
+    .sort((left, right) => left - right);
+  return [...knownDurations, ...extraDurations];
+};
+
+const setAdminDurationsFromRawValue = (rawValue) => {
+  const durations = String(rawValue || "")
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isInteger(item) && item > 0);
+  selectedAdminDurations = new Set(sortDurations(durations));
+};
+
+const renderDurationOptions = () => {
+  if (!settingsDurationOptions) {
+    return;
+  }
+
+  settingsDurationOptions.innerHTML = "";
+  adminDurationOptions.forEach((duration) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "setting-chip-btn";
+    button.textContent = `${duration} мин`;
+    if (selectedAdminDurations.has(duration)) {
+      button.classList.add("active");
+    }
+    button.addEventListener("click", () => {
+      if (selectedAdminDurations.has(duration)) {
+        selectedAdminDurations.delete(duration);
+      } else {
+        selectedAdminDurations.add(duration);
+      }
+      selectedAdminDurations = new Set(sortDurations(Array.from(selectedAdminDurations)));
+      syncSettingValueFromStructuredEditors();
+      renderDurationOptions();
+    });
+    settingsDurationOptions.append(button);
+  });
+};
+
+const setForbiddenDateValue = (dateText) => {
+  if (!settingValueInput) {
+    return;
+  }
+
+  const currentValue = String(settingValueInput.value || "");
+  const [, reasonPart = ""] = currentValue.split("|", 2);
+  const reason = reasonPart.trim();
+  settingValueInput.value = reason ? `${dateText} | ${reason}` : dateText;
+};
+
+const renderForbiddenDateOptions = () => {
+  if (!forbiddenDateOptions) {
+    return;
+  }
+
+  const today = startOfLocalDay(new Date());
+  const currentDate = String(settingValueInput?.value || "").split("|", 1)[0].trim();
+  forbiddenDateOptions.innerHTML = "";
+
+  for (let offset = 0; offset < 14; offset += 1) {
+    const day = addDays(today, offset);
+    const dateText = toIsoDate(day);
+    const dayMeta = formatWeekDayMeta(dateText);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "week-day-btn setting-day-btn";
+    button.innerHTML = `
+      <span class="week-day-icon">${dayMeta.icon}</span>
+      <span class="week-day-name">${dayMeta.name}</span>
+      <span class="week-day-date">${dayMeta.date}</span>
+    `;
+    if (currentDate === dateText) {
+      button.classList.add("active");
+    }
+    button.addEventListener("click", () => {
+      setForbiddenDateValue(dateText);
+      renderForbiddenDateOptions();
+      setAdminStatus(`Выбрана запрещенная дата: ${dateText}. Нажмите «Обновить настройку».`, "info");
+    });
+    forbiddenDateOptions.append(button);
+  }
+};
+
 const syncSettingValueFromStructuredEditors = () => {
   const key = String(settingKeyInput?.value || "").trim();
   if (!key || !settingValueInput) {
@@ -325,6 +466,12 @@ const syncSettingValueFromStructuredEditors = () => {
     const start = String(workdayStartTimeInput?.value || "").trim();
     const end = String(workdayEndTimeInput?.value || "").trim();
     settingValueInput.value = start && end ? `${start}-${end}` : "";
+    return;
+  }
+
+  if (key === "durations") {
+    const orderedDurations = sortDurations(Array.from(selectedAdminDurations));
+    settingValueInput.value = orderedDurations.join(",");
   }
 };
 
@@ -332,21 +479,31 @@ const applySettingEditorMode = () => {
   const key = String(settingKeyInput?.value || "").trim();
   const isWorkingDays = key === "working_days";
   const isWorkingHours = key === "working_hours";
+  const isDurations = key === "durations";
+  const isForbiddenDate = key === "forbidden_date";
 
   workingDaysCalendarEditor?.classList.toggle("hidden", !isWorkingDays);
   workingHoursEditor?.classList.toggle("hidden", !isWorkingHours);
+  settingsDurationsEditor?.classList.toggle("hidden", !isDurations);
+  forbiddenDateEditor?.classList.toggle("hidden", !isForbiddenDate);
 
   if (settingValueLabel) {
-    settingValueLabel.textContent = isWorkingDays || isWorkingHours ? "Значение (автоматически)" : "Значение";
+    settingValueLabel.textContent =
+      isWorkingDays || isWorkingHours || isDurations
+        ? "Значение (автоматически)"
+        : "Значение";
   }
 
   if (settingValueInput) {
-    settingValueInput.readOnly = isWorkingDays || isWorkingHours;
+    settingValueInput.readOnly = isWorkingDays || isWorkingHours || isDurations;
     settingValueInput.placeholder = settingPlaceholders[key] || "Введите значение настройки";
   }
 
   if (settingValueHint) {
-    settingValueHint.classList.toggle("hidden", !(isWorkingDays || isWorkingHours));
+    settingValueHint.classList.toggle(
+      "hidden",
+      !(isWorkingDays || isWorkingHours || isDurations || isForbiddenDate)
+    );
   }
 
   if (isWorkingDays) {
@@ -363,6 +520,18 @@ const applySettingEditorMode = () => {
       workdayStartTimeInput.value = match[1];
       workdayEndTimeInput.value = match[2];
     }
+    renderWorkingHoursPresets();
+  }
+
+  if (isDurations) {
+    if (selectedAdminDurations.size === 0) {
+      setAdminDurationsFromRawValue(settingValueInput.value);
+    }
+    renderDurationOptions();
+  }
+
+  if (isForbiddenDate) {
+    renderForbiddenDateOptions();
   }
 
   syncSettingValueFromStructuredEditors();
@@ -381,6 +550,9 @@ const applyAdminSettingsSnapshot = (settingsPayload) => {
   }
   if (workdayEndTimeInput && typeof settingsPayload.workday_end === "string") {
     workdayEndTimeInput.value = settingsPayload.workday_end;
+  }
+  if (Array.isArray(settingsPayload.available_durations_minutes)) {
+    selectedAdminDurations = new Set(sortDurations(settingsPayload.available_durations_minutes));
   }
 
   applySettingEditorMode();
@@ -1185,16 +1357,28 @@ settingKeyInput?.addEventListener("change", () => {
   if (key === "working_days") {
     setAdminStatus("Выберите рабочие дни прямо в календаре ниже.", "info");
   } else if (key === "working_hours") {
-    setAdminStatus("Выберите начало и окончание рабочего дня.", "info");
+    setAdminStatus("Выберите готовый интервал кнопкой или укажите время вручную.", "info");
+  } else if (key === "durations") {
+    setAdminStatus("Выберите длительности кнопками ниже.", "info");
+  } else if (key === "forbidden_date") {
+    setAdminStatus("Выберите ближайшую запрещенную дату кнопкой или введите дату вручную.", "info");
   }
 });
 
 workdayStartTimeInput?.addEventListener("change", () => {
   syncSettingValueFromStructuredEditors();
+  renderWorkingHoursPresets();
 });
 
 workdayEndTimeInput?.addEventListener("change", () => {
   syncSettingValueFromStructuredEditors();
+  renderWorkingHoursPresets();
+});
+
+settingValueInput?.addEventListener("input", () => {
+  if (String(settingKeyInput?.value || "").trim() === "forbidden_date") {
+    renderForbiddenDateOptions();
+  }
 });
 
 if (bookingNextButton) {
