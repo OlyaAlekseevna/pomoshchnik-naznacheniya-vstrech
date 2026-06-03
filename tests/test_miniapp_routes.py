@@ -27,7 +27,7 @@ def test_miniapp_routes_available_when_enabled() -> None:
                 assert miniapp_page.headers["Cache-Control"] == (
                     "no-store, no-cache, must-revalidate, max-age=0"
                 )
-                assert "/miniapp/static/app.js?v=20260602-telegram-auth" in miniapp_page.text
+                assert "/miniapp/static/app.js?v=20260603-schedule-buttons" in miniapp_page.text
                 assert "Календарь встреч в Telegram" in miniapp_page.text
                 assert 'id="workingHoursPresets"' in miniapp_page.text
                 assert 'id="settingsDurationOptions"' in miniapp_page.text
