@@ -43,7 +43,7 @@ def test_main_menu_adds_webapp_button_when_miniapp_domain_configured(monkeypatch
     assert first_button.text == OPEN_MINIAPP_TEXT
     assert first_button.web_app is not None
     assert first_button.web_app.url == (
-        "https://calendar.monvera.su/miniapp?v=20260603-period-buttons"
+        "https://calendar.monvera.su/miniapp?v=20260603-booking-duration-fix"
     )
 
 
