@@ -34,6 +34,16 @@ _WEEKDAY_LABELS = {
     6: "Вс",
 }
 
+ADMIN_WEEKDAY_OPTIONS = (
+    ("monday", "ПН"),
+    ("tuesday", "ВТ"),
+    ("wednesday", "СР"),
+    ("thursday", "ЧТ"),
+    ("friday", "ПТ"),
+    ("saturday", "СБ"),
+    ("sunday", "ВС"),
+)
+
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     settings = get_settings()
@@ -272,3 +282,29 @@ def admin_settings_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Назад в админ-меню", callback_data="admin:menu")],
         ]
     )
+
+
+def admin_working_days_keyboard(selected_days: list[str]) -> InlineKeyboardMarkup:
+    selected = set(selected_days)
+    rows: list[list[InlineKeyboardButton]] = []
+    current_row: list[InlineKeyboardButton] = []
+    for day_value, short_label in ADMIN_WEEKDAY_OPTIONS:
+        marker = "✓" if day_value in selected else " "
+        current_row.append(
+            InlineKeyboardButton(
+                text=f"{marker} {short_label}",
+                callback_data=f"admin:workdays:toggle:{day_value}",
+            )
+        )
+        if len(current_row) == 3:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+    rows.append(
+        [
+            InlineKeyboardButton(text="Сохранить", callback_data="admin:workdays:save"),
+            InlineKeyboardButton(text="Отмена", callback_data="admin:workdays:cancel"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)

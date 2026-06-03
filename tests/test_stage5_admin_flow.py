@@ -210,6 +210,11 @@ async def test_settings_and_forbidden_period_updates() -> None:
         await _seed_settings(session)
         admin_id = 9001
 
+        with pytest.raises(ValueError) as error_info:
+            await apply_setting_update(session, admin_id, "working_days", "funday")
+        assert "monday" not in str(error_info.value)
+        assert "понедельник,вторник,среда" in str(error_info.value)
+
         summary_with_ru_weekdays = await apply_setting_update(
             session,
             admin_id,
