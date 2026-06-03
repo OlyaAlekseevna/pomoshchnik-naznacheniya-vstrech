@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mini App • Календарь встреч</title>
-  <link rel="stylesheet" href="/miniapp/static/styles.css?v=20260603-schedule-buttons">
+  <link rel="stylesheet" href="/miniapp/static/styles.css?v=20260603-period-buttons">
 </head>
 <body>
   <main class="app-shell">
@@ -215,6 +215,13 @@
             <div id="forbiddenDateOptions" class="week-days settings-date-options"></div>
           </div>
 
+          <div id="forbiddenPeriodEditor" class="setting-editor hidden">
+            <label>Запрещенный период</label>
+            <p class="muted">Выберите дату и период. Причину можно дописать в поле ниже после `|`.</p>
+            <div id="forbiddenPeriodDateOptions" class="week-days settings-date-options"></div>
+            <div id="forbiddenPeriodTimeOptions" class="setting-chip-grid"></div>
+          </div>
+
           <label id="settingValueLabel" for="settingValue">Значение</label>
           <textarea id="settingValue" rows="3" placeholder="Пример: 09:00-18:00"></textarea>
           <p id="settingValueHint" class="muted">Для ключей с кнопками значение формируется автоматически. Для запрещенной даты можно дописать причину после `|`.</p>
@@ -254,6 +261,6 @@
     </section>
   </main>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="/miniapp/static/app.js?v=20260603-schedule-buttons"></script>
+  <script src="/miniapp/static/app.js?v=20260603-period-buttons"></script>
 </body>
 </html>

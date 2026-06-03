@@ -37,6 +37,9 @@ const settingsDurationsEditor = document.getElementById("settingsDurationsEditor
 const settingsDurationOptions = document.getElementById("settingsDurationOptions");
 const forbiddenDateEditor = document.getElementById("forbiddenDateEditor");
 const forbiddenDateOptions = document.getElementById("forbiddenDateOptions");
+const forbiddenPeriodEditor = document.getElementById("forbiddenPeriodEditor");
+const forbiddenPeriodDateOptions = document.getElementById("forbiddenPeriodDateOptions");
+const forbiddenPeriodTimeOptions = document.getElementById("forbiddenPeriodTimeOptions");
 const settingsWeekDaysContainer = document.getElementById("settingsWeekDays");
 const workdayStartTimeInput = document.getElementById("workdayStartTime");
 const workdayEndTimeInput = document.getElementById("workdayEndTime");
@@ -53,6 +56,8 @@ let bookingConfig = null;
 let bookingPageOffset = 0;
 let selectedWorkingDays = new Set();
 let selectedAdminDurations = new Set();
+let selectedForbiddenPeriodDate = "";
+let selectedForbiddenPeriodPreset = "workday";
 
 const telegramWebApp = window.Telegram?.WebApp || null;
 const extractTelegramInitData = () => {
@@ -88,6 +93,13 @@ const adminWorkingHourOptions = [
 ];
 
 const adminDurationOptions = [15, 30, 45, 60, 90, 120];
+
+const adminForbiddenPeriodOptions = [
+  { value: "workday", label: "Весь рабочий день", interval: null },
+  { value: "morning", label: "Утро 09:00-12:00", interval: ["09:00", "12:00"] },
+  { value: "day", label: "День 12:00-15:00", interval: ["12:00", "15:00"] },
+  { value: "evening", label: "Вечер 15:00-18:00", interval: ["15:00", "18:00"] },
+];
 
 const write = (title, payload) => {
   output.textContent = [
@@ -227,7 +239,7 @@ const settingPlaceholders = {
   daily_limit: "Пример: 3",
   horizon: "Пример: 28",
   forbidden_date: "Пример: 2026-06-10 | отпуск",
-  forbidden_period: "Пример: 2026-06-10 10:00 - 2026-06-10 15:00 | мероприятие",
+  forbidden_period: "Выберите дату и период кнопками ниже",
   new_request_text: "Пример: Новая заявка от пользователя",
 };
 
@@ -450,6 +462,112 @@ const renderForbiddenDateOptions = () => {
   }
 };
 
+const getWorkdayTimeRange = () => [
+  String(workdayStartTimeInput?.value || "10:00").trim() || "10:00",
+  String(workdayEndTimeInput?.value || "18:00").trim() || "18:00",
+];
+
+const getReasonFromSettingValue = () => {
+  const [, reasonPart = ""] = String(settingValueInput?.value || "").split("|", 2);
+  return reasonPart.trim();
+};
+
+const parseForbiddenPeriodDateFromValue = () => {
+  const match = String(settingValueInput?.value || "").match(/^(\d{4}-\d{2}-\d{2})\s+/);
+  return match ? match[1] : "";
+};
+
+const getForbiddenPeriodInterval = (presetCode) => {
+  const option = adminForbiddenPeriodOptions.find((item) => item.value === presetCode);
+  if (!option) {
+    return getWorkdayTimeRange();
+  }
+  return option.interval || getWorkdayTimeRange();
+};
+
+const setForbiddenPeriodValue = (dateText, presetCode) => {
+  if (!settingValueInput || !dateText) {
+    return;
+  }
+
+  const [start, end] = getForbiddenPeriodInterval(presetCode);
+  const reason = getReasonFromSettingValue();
+  const periodValue = `${dateText} ${start} - ${dateText} ${end}`;
+  settingValueInput.value = reason ? `${periodValue} | ${reason}` : periodValue;
+};
+
+const renderForbiddenPeriodDateOptions = () => {
+  if (!forbiddenPeriodDateOptions) {
+    return;
+  }
+
+  const today = startOfLocalDay(new Date());
+  const currentDate =
+    selectedForbiddenPeriodDate || parseForbiddenPeriodDateFromValue() || toIsoDate(today);
+  selectedForbiddenPeriodDate = currentDate;
+  forbiddenPeriodDateOptions.innerHTML = "";
+
+  for (let offset = 0; offset < 14; offset += 1) {
+    const day = addDays(today, offset);
+    const dateText = toIsoDate(day);
+    const dayMeta = formatWeekDayMeta(dateText);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "week-day-btn setting-day-btn";
+    button.innerHTML = `
+      <span class="week-day-icon">${dayMeta.icon}</span>
+      <span class="week-day-name">${dayMeta.name}</span>
+      <span class="week-day-date">${dayMeta.date}</span>
+    `;
+    if (currentDate === dateText) {
+      button.classList.add("active");
+    }
+    button.addEventListener("click", () => {
+      selectedForbiddenPeriodDate = dateText;
+      setForbiddenPeriodValue(selectedForbiddenPeriodDate, selectedForbiddenPeriodPreset);
+      renderForbiddenPeriodDateOptions();
+      renderForbiddenPeriodTimeOptions();
+      setAdminStatus(
+        `Выбрана дата периода: ${dateText}. Выберите период и нажмите «Обновить настройку».`,
+        "info"
+      );
+    });
+    forbiddenPeriodDateOptions.append(button);
+  }
+};
+
+const renderForbiddenPeriodTimeOptions = () => {
+  if (!forbiddenPeriodTimeOptions) {
+    return;
+  }
+
+  forbiddenPeriodTimeOptions.innerHTML = "";
+  adminForbiddenPeriodOptions.forEach((option) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "setting-chip-btn";
+    const [start, end] = getForbiddenPeriodInterval(option.value);
+    button.textContent =
+      option.value === "workday" ? `${option.label} ${start}-${end}` : option.label;
+    if (selectedForbiddenPeriodPreset === option.value) {
+      button.classList.add("active");
+    }
+    button.addEventListener("click", () => {
+      selectedForbiddenPeriodPreset = option.value;
+      if (!selectedForbiddenPeriodDate) {
+        selectedForbiddenPeriodDate = toIsoDate(startOfLocalDay(new Date()));
+      }
+      setForbiddenPeriodValue(selectedForbiddenPeriodDate, selectedForbiddenPeriodPreset);
+      renderForbiddenPeriodTimeOptions();
+      setAdminStatus(
+        `Выбран период: ${button.textContent}. Нажмите «Обновить настройку».`,
+        "info"
+      );
+    });
+    forbiddenPeriodTimeOptions.append(button);
+  });
+};
+
 const syncSettingValueFromStructuredEditors = () => {
   const key = String(settingKeyInput?.value || "").trim();
   if (!key || !settingValueInput) {
@@ -472,6 +590,16 @@ const syncSettingValueFromStructuredEditors = () => {
   if (key === "durations") {
     const orderedDurations = sortDurations(Array.from(selectedAdminDurations));
     settingValueInput.value = orderedDurations.join(",");
+    return;
+  }
+
+  if (key === "forbidden_period") {
+    if (!selectedForbiddenPeriodDate) {
+      selectedForbiddenPeriodDate = parseForbiddenPeriodDateFromValue();
+    }
+    if (selectedForbiddenPeriodDate) {
+      setForbiddenPeriodValue(selectedForbiddenPeriodDate, selectedForbiddenPeriodPreset);
+    }
   }
 };
 
@@ -481,11 +609,13 @@ const applySettingEditorMode = () => {
   const isWorkingHours = key === "working_hours";
   const isDurations = key === "durations";
   const isForbiddenDate = key === "forbidden_date";
+  const isForbiddenPeriod = key === "forbidden_period";
 
   workingDaysCalendarEditor?.classList.toggle("hidden", !isWorkingDays);
   workingHoursEditor?.classList.toggle("hidden", !isWorkingHours);
   settingsDurationsEditor?.classList.toggle("hidden", !isDurations);
   forbiddenDateEditor?.classList.toggle("hidden", !isForbiddenDate);
+  forbiddenPeriodEditor?.classList.toggle("hidden", !isForbiddenPeriod);
 
   if (settingValueLabel) {
     settingValueLabel.textContent =
@@ -502,7 +632,7 @@ const applySettingEditorMode = () => {
   if (settingValueHint) {
     settingValueHint.classList.toggle(
       "hidden",
-      !(isWorkingDays || isWorkingHours || isDurations || isForbiddenDate)
+      !(isWorkingDays || isWorkingHours || isDurations || isForbiddenDate || isForbiddenPeriod)
     );
   }
 
@@ -532,6 +662,13 @@ const applySettingEditorMode = () => {
 
   if (isForbiddenDate) {
     renderForbiddenDateOptions();
+  }
+
+  if (isForbiddenPeriod) {
+    selectedForbiddenPeriodDate =
+      parseForbiddenPeriodDateFromValue() || selectedForbiddenPeriodDate;
+    renderForbiddenPeriodDateOptions();
+    renderForbiddenPeriodTimeOptions();
   }
 
   syncSettingValueFromStructuredEditors();
@@ -1362,22 +1499,35 @@ settingKeyInput?.addEventListener("change", () => {
     setAdminStatus("Выберите длительности кнопками ниже.", "info");
   } else if (key === "forbidden_date") {
     setAdminStatus("Выберите ближайшую запрещенную дату кнопкой или введите дату вручную.", "info");
+  } else if (key === "forbidden_period") {
+    setAdminStatus("Выберите дату и период кнопками ниже.", "info");
   }
 });
 
 workdayStartTimeInput?.addEventListener("change", () => {
   syncSettingValueFromStructuredEditors();
   renderWorkingHoursPresets();
+  if (String(settingKeyInput?.value || "").trim() === "forbidden_period") {
+    renderForbiddenPeriodTimeOptions();
+  }
 });
 
 workdayEndTimeInput?.addEventListener("change", () => {
   syncSettingValueFromStructuredEditors();
   renderWorkingHoursPresets();
+  if (String(settingKeyInput?.value || "").trim() === "forbidden_period") {
+    renderForbiddenPeriodTimeOptions();
+  }
 });
 
 settingValueInput?.addEventListener("input", () => {
-  if (String(settingKeyInput?.value || "").trim() === "forbidden_date") {
+  const key = String(settingKeyInput?.value || "").trim();
+  if (key === "forbidden_date") {
     renderForbiddenDateOptions();
+  }
+  if (key === "forbidden_period") {
+    selectedForbiddenPeriodDate = parseForbiddenPeriodDateFromValue() || selectedForbiddenPeriodDate;
+    renderForbiddenPeriodDateOptions();
   }
 });
 

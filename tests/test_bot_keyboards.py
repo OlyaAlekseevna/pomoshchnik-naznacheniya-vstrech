@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 
 import pytest
 
@@ -7,6 +7,8 @@ from app.bot.keyboards import (
     OPEN_MINIAPP_TEXT,
     admin_durations_keyboard,
     admin_forbidden_date_keyboard,
+    admin_forbidden_period_date_keyboard,
+    admin_forbidden_period_time_keyboard,
     admin_working_days_keyboard,
     admin_working_hours_keyboard,
     main_menu_keyboard,
@@ -41,7 +43,7 @@ def test_main_menu_adds_webapp_button_when_miniapp_domain_configured(monkeypatch
     assert first_button.text == OPEN_MINIAPP_TEXT
     assert first_button.web_app is not None
     assert first_button.web_app.url == (
-        "https://calendar.monvera.su/miniapp?v=20260603-schedule-buttons"
+        "https://calendar.monvera.su/miniapp?v=20260603-period-buttons"
     )
 
 
@@ -101,3 +103,37 @@ def test_admin_forbidden_date_keyboard_uses_next_dates() -> None:
     assert "admin:forbid_date:add:2026-06-05" in callbacks
     assert "admin:forbid_date:manual" in callbacks
     assert "admin:forbid_date:cancel" in callbacks
+
+
+def test_admin_forbidden_period_date_keyboard_uses_next_dates() -> None:
+    keyboard = admin_forbidden_period_date_keyboard(date(2026, 6, 3), days_count=2)
+    button_texts = [button.text for row in keyboard.inline_keyboard for button in row]
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+
+    assert "Ср 03.06" in button_texts
+    assert "Чт 04.06" in button_texts
+    assert "Ввести вручную" in button_texts
+    assert "Отмена" in button_texts
+    assert "admin:forbid_period:date:2026-06-03" in callbacks
+    assert "admin:forbid_period:date:2026-06-04" in callbacks
+    assert "admin:forbid_period:manual" in callbacks
+    assert "admin:forbid_period:cancel" in callbacks
+
+
+def test_admin_forbidden_period_time_keyboard_contains_presets() -> None:
+    keyboard = admin_forbidden_period_time_keyboard(
+        date(2026, 6, 3),
+        time(10, 0),
+        time(18, 0),
+    )
+    button_texts = [button.text for row in keyboard.inline_keyboard for button in row]
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+
+    assert "Весь рабочий день 10:00-18:00" in button_texts
+    assert "Утро 09:00-12:00" in button_texts
+    assert "День 12:00-15:00" in button_texts
+    assert "Вечер 15:00-18:00" in button_texts
+    assert "Назад к датам" in button_texts
+    assert "admin:forbid_period:time:2026-06-03:workday" in callbacks
+    assert "admin:forbid_period:time:2026-06-03:morning" in callbacks
+    assert "admin:forbid_period:dates" in callbacks

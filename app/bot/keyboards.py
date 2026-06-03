@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from datetime import time as time_
 
 from aiogram.types import (
     InlineKeyboardButton,
@@ -20,7 +21,7 @@ BOOK_TEXT = "Записаться на консультацию"
 MY_REQUESTS_TEXT = "Мои заявки"
 DELETE_MY_DATA_TEXT = "Удалить мои данные"
 OPEN_MINIAPP_TEXT = "Открыть Mini App"
-MINIAPP_URL_VERSION = "20260603-schedule-buttons"
+MINIAPP_URL_VERSION = "20260603-period-buttons"
 CONSENT_TEXT = "Согласен(на)"
 SUBMIT_TEXT = "Отправить заявку"
 
@@ -54,6 +55,13 @@ ADMIN_WORKING_HOURS_OPTIONS = (
 )
 
 ADMIN_DURATION_OPTIONS = (15, 30, 45, 60, 90, 120)
+
+ADMIN_FORBIDDEN_PERIOD_OPTIONS = (
+    ("workday", "Весь рабочий день", None),
+    ("morning", "Утро 09:00-12:00", ("09:00", "12:00")),
+    ("day", "День 12:00-15:00", ("12:00", "15:00")),
+    ("evening", "Вечер 15:00-18:00", ("15:00", "18:00")),
+)
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -397,4 +405,80 @@ def admin_forbidden_date_keyboard(today: date, days_count: int = 14) -> InlineKe
             InlineKeyboardButton(text="Отмена", callback_data="admin:forbid_date:cancel"),
         ]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_forbidden_period_date_keyboard(
+    today: date,
+    days_count: int = 14,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    current_row: list[InlineKeyboardButton] = []
+    for offset in range(days_count):
+        day = date.fromordinal(today.toordinal() + offset)
+        label = f"{_WEEKDAY_LABELS[day.weekday()]} {day:%d.%m}"
+        current_row.append(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"admin:forbid_period:date:{day.isoformat()}",
+            )
+        )
+        if len(current_row) == 2:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Ввести вручную",
+                callback_data="admin:forbid_period:manual",
+            ),
+            InlineKeyboardButton(text="Отмена", callback_data="admin:forbid_period:cancel"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_forbidden_period_time_keyboard(
+    day: date,
+    workday_start: time_,
+    workday_end: time_,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    workday_label = (
+        f"Весь рабочий день {workday_start.strftime('%H:%M')}-"
+        f"{workday_end.strftime('%H:%M')}"
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text=workday_label,
+                callback_data=f"admin:forbid_period:time:{day.isoformat()}:workday",
+            )
+        ]
+    )
+
+    for code, label, interval in ADMIN_FORBIDDEN_PERIOD_OPTIONS:
+        if interval is None:
+            continue
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=label,
+                    callback_data=f"admin:forbid_period:time:{day.isoformat()}:{code}",
+                )
+            ]
+        )
+
+    rows.append(
+        [
+            InlineKeyboardButton(text="Назад к датам", callback_data="admin:forbid_period:dates"),
+            InlineKeyboardButton(
+                text="Ввести вручную",
+                callback_data="admin:forbid_period:manual",
+            ),
+        ]
+    )
+    rows.append([InlineKeyboardButton(text="Отмена", callback_data="admin:forbid_period:cancel")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
